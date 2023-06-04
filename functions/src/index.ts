@@ -1,15 +1,17 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as functions from 'firebase-functions';
-import admin from 'firebase-admin';
+import { onRequest } from 'firebase-functions/v2/https';
 import axios, { AxiosResponse } from 'axios';
 import { config } from 'dotenv';
 
+import admin from 'firebase-admin';
 const openaitoken = process.env.OPENAI_TOKEN;
 const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 
-/*import { Configuration, OpenAIApi } from "openai";
+/* import { Configuration, OpenAIApi } from "openai";
 const configuration = new Configuration({
     organization: "org-",
     apiKey: process.env.OPENAI_API_KEY,
@@ -184,8 +186,8 @@ const getUserInfo = async (userId: string, platform: string, name: string) => {
       if (platform === 'messenger') {
         try {
           const response = await getFbUserInfo();
-          let firstName = response.data.first_name || name;
-          let lastName = response.data.last_name || '';
+          const firstName = response.data.first_name || name;
+          const lastName = response.data.last_name || '';
           return {
             psid: userId,
             first_name: firstName,
@@ -300,8 +302,8 @@ const createMessageToAi = async (
 ) => {
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
-  //const summary = await getConversationSummary(messages);
-  //functions.logger.log(`Conversation summary: ${summary}`);
+  // const summary = await getConversationSummary(messages);
+  // functions.logger.log(`Conversation summary: ${summary}`);
   return [
     ...system,
     ...main,
@@ -312,7 +314,7 @@ const createMessageToAi = async (
       name: msg.role === 'assistant' ? 'Tylr' : name,
     })),
     { role: 'user', content: `${msg_body}`, name: name },
-    //{ role: 'system', content: `${summary}` },
+    // { role: 'system', content: `${summary}` },
     ...reminder,
     {
       role: 'system',
@@ -403,7 +405,7 @@ const processMessage = async (
   functions.logger.log('customReminder: ' + customReminder);
 
   // Get conversation summary
-  //const conversationSummary = await getConversationSummary(messages);
+  // const conversationSummary = await getConversationSummary(messages);
 
   // Create messages to AI
   const messagesToAi = await createMessageToAi(
@@ -437,9 +439,9 @@ const app = async (req, res) => {
     functions.logger.log('Processing GET request');
     functions.logger.info(req, { structuredData: true });
 
-    let mode = req.query['hub.mode'];
-    let token = req.query['hub.verify_token'];
-    let challenge = req.query['hub.challenge'];
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
 
     if (mode && token) {
       if (mode === 'subscribe' && token === verifyToken) {
@@ -513,4 +515,4 @@ const app = async (req, res) => {
   return functions.logger.log('Running for no reason...');
 };
 
-export const webhook = functions.https.onRequest(app);
+export const webhook = onRequest(app);
