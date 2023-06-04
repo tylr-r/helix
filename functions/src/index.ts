@@ -1,23 +1,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import * as functions from 'firebase-functions';
 import { onRequest } from 'firebase-functions/v2/https';
-import axios, { AxiosResponse } from 'axios';
+import axios from 'axios';
 import { config } from 'dotenv';
-
 import admin from 'firebase-admin';
+
 const openaitoken = process.env.OPENAI_TOKEN;
 const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 
-/* import { Configuration, OpenAIApi } from "openai";
+import { Configuration, OpenAIApi } from 'openai';
 const configuration = new Configuration({
-    organization: "org-",
-    apiKey: process.env.OPENAI_API_KEY,
+  organization: 'org-32kC0J0s9sPLuPsz6De5btyE',
+  apiKey: openaitoken,
 });
 const openai = new OpenAIApi(configuration);
-const response = await openai.listEngines();*/
 
 admin.initializeApp();
 
@@ -333,35 +332,20 @@ const createMessageToAi = async (
   });
 }; */
 
-const openAiRequest = async (
-  messagesToAi: any[],
-  model: string,
-): Promise<void | AxiosResponse<any, any>> => {
-  functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messagesToAi)}`);
-  return await axios
-    .post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model,
-        temperature: 1,
-        messages: messagesToAi,
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openaitoken}`,
-        },
-      },
-    )
-    .then((response) => {
-      return response;
-    })
-    .catch((error: any) => {
-      functions.logger.error(
-        `Error during OpenAI API call: ${error}`,
-        `${messagesToAi}`,
-      );
+const openAiRequest = async (messages: any[], model: string): Promise<any> => {
+  functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messages)}`);
+
+  try {
+    const completion = await openai.createChatCompletion({
+      model,
+      temperature: 1,
+      messages,
     });
+    functions.logger.info(completion.data.choices[0].message);
+    return completion.data.choices[0].message;
+  } catch (error) {
+    functions.logger.error('Error in openAiRequest:', error);
+  }
 };
 
 const extractWhatsAppMessageDetails = (req: {
