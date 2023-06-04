@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions';
 import admin from 'firebase-admin';
-import axios from 'axios';
+import axios, { AxiosResponse } from 'axios';
 import { config } from 'dotenv';
 
 const openaitoken = process.env.OPENAI_TOKEN;
@@ -54,7 +54,7 @@ const getPrimer = async () => {
   }
 };
 
-const sendWhatsAppReceipt = async (phone_number_id, msgId) => {
+const sendWhatsAppReceipt = async (phone_number_id: string, msgId: string) => {
   try {
     await axios({
       method: 'POST',
@@ -65,7 +65,7 @@ const sendWhatsAppReceipt = async (phone_number_id, msgId) => {
         message_id: msgId,
       },
       headers: { 'Content-Type': 'application/json' },
-    }).catch((error) => {
+    }).catch((error: any) => {
       functions.logger.error('Error while marking WhatsApp as seen:', error);
     });
   } catch (error) {
@@ -74,7 +74,7 @@ const sendWhatsAppReceipt = async (phone_number_id, msgId) => {
   }
 };
 
-const markMessengerAsSeen = (userId) => {
+const markMessengerAsSeen = (userId: string) => {
   try {
     axios({
       method: 'POST',
@@ -91,7 +91,7 @@ const markMessengerAsSeen = (userId) => {
 };
 
 // Send Messenger receipt
-const sendMessengerReceipt = async (userId, typingStatus) => {
+const sendMessengerReceipt = async (userId: string, typingStatus: string) => {
   functions.logger.log('Sending Messenger receipt');
   return await axios({
     method: 'POST',
@@ -101,13 +101,13 @@ const sendMessengerReceipt = async (userId, typingStatus) => {
       sender_action: typingStatus,
     },
     headers: { 'Content-Type': 'application/json' },
-  }).catch((error) => {
+  }).catch((error: any) => {
     functions.logger.error(`Error sending messenger receipt: ${error}`);
   });
 };
 
 // Send Messenger message
-const sendMessengerMessage = async (userId, response) => {
+const sendMessengerMessage = async (userId: string, response) => {
   functions.logger.log('Sending Messenger message');
   return await axios({
     method: 'POST',
@@ -117,13 +117,13 @@ const sendMessengerMessage = async (userId, response) => {
       message: { text: `${response}` },
     },
     headers: { 'Content-Type': 'application/json' },
-  }).catch((error) => {
+  }).catch((error: any) => {
     functions.logger.error(`Error sending messenger message: ${error}`);
   });
 };
 
 // Send WhatsApp message
-const sendWhatsAppMessage = async (userId, from, response) => {
+const sendWhatsAppMessage = async (userId: string, from: string, response) => {
   functions.logger.log('Sending WhatsApp message');
   try {
     await axios({
@@ -135,7 +135,7 @@ const sendWhatsAppMessage = async (userId, from, response) => {
         text: { body: `${response}` },
       },
       headers: { 'Content-Type': 'application/json' },
-    }).catch((error) => {
+    }).catch((error: any) => {
       functions.logger.error(
         'Error during Assistance response to user:',
         error,
@@ -146,7 +146,7 @@ const sendWhatsAppMessage = async (userId, from, response) => {
   }
 };
 
-const storeMessage = async (from, message, role) => {
+const storeMessage = async (from: string, message: any, role: string) => {
   try {
     await admin
       .firestore()
@@ -162,7 +162,7 @@ const storeMessage = async (from, message, role) => {
     functions.logger.error(`Error storing message: ${error}`);
   }
 };
-const getUserInfo = async (userId, platform, name) => {
+const getUserInfo = async (userId: string, platform: string, name: string) => {
   const start = Date.now();
   const infoCollectionRef = admin
     .firestore()
@@ -222,7 +222,7 @@ const getUserInfo = async (userId, platform, name) => {
     first_name: 'someone',
   };
 
-  async function getFbUserInfo() {
+  async function getFbUserInfo(): Promise<any> {
     functions.logger.log('Getting user info from Facebook');
     await axios
       .get(`https://graph.facebook.com/${userId}`, {
@@ -237,7 +237,7 @@ const getUserInfo = async (userId, platform, name) => {
       .then((response) => {
         return response;
       })
-      .catch((error) => {
+      .catch((error: any) => {
         functions.logger.error(
           `Error getting user info from Facebook: ${error}`,
         );
@@ -245,7 +245,7 @@ const getUserInfo = async (userId, platform, name) => {
   }
 };
 
-const saveConversationSummary = async (userId, conversation) => {
+/* const saveConversationSummary = async (userId: string, conversation: any) => {
   try {
     admin
       .firestore()
@@ -259,7 +259,7 @@ const saveConversationSummary = async (userId, conversation) => {
   } catch (error) {
     functions.logger.error(`Error storing conversation summary: ${error}`);
   }
-};
+}; */
 
 // ask openai for a summary of the conversation
 /* const getConversationSummary = async (conversation) => {
@@ -279,7 +279,7 @@ const saveConversationSummary = async (userId, conversation) => {
   return ``;
 }; */
 
-const getPreviousMessages = async (from) => {
+const getPreviousMessages = async (from: string) => {
   functions.logger.log('getting existing messages');
   const snapshot = await admin
     .firestore()
@@ -289,10 +289,15 @@ const getPreviousMessages = async (from) => {
     .orderBy('creation', 'desc')
     .limit(5) // Limit the number of messages returned to 5
     .get();
-  return snapshot.docs.map((doc) => doc.data()).reverse();
+  return snapshot.docs.map((doc: { data: () => any }) => doc.data()).reverse();
 };
 
-const createMessageToAi = async (messages, msg_body, customReminder, name) => {
+const createMessageToAi = async (
+  messages: any[],
+  msg_body: any,
+  customReminder: string,
+  name: string,
+) => {
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
   //const summary = await getConversationSummary(messages);
@@ -301,7 +306,7 @@ const createMessageToAi = async (messages, msg_body, customReminder, name) => {
     ...system,
     ...main,
     // Add retrieved messages:
-    ...messages.map((msg) => ({
+    ...messages.map((msg: { role: string; text: any }) => ({
       role: msg.role,
       content: msg.text,
       name: msg.role === 'assistant' ? 'Tylr' : name,
@@ -326,7 +331,10 @@ const createMessageToAi = async (messages, msg_body, customReminder, name) => {
   });
 }; */
 
-const openAiRequest = async (messagesToAi, model) => {
+const openAiRequest = async (
+  messagesToAi: any[],
+  model: string,
+): Promise<void | AxiosResponse<any, any>> => {
   functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messagesToAi)}`);
   return await axios
     .post(
@@ -346,7 +354,7 @@ const openAiRequest = async (messagesToAi, model) => {
     .then((response) => {
       return response;
     })
-    .catch((error) => {
+    .catch((error: any) => {
       functions.logger.error(
         `Error during OpenAI API call: ${error}`,
         `${messagesToAi}`,
@@ -354,7 +362,9 @@ const openAiRequest = async (messagesToAi, model) => {
     });
 };
 
-const extractWhatsAppMessageDetails = (req) => {
+const extractWhatsAppMessageDetails = (req: {
+  body: { entry: { changes: { value: any }[] }[] };
+}) => {
   const request = req.body.entry[0].changes[0].value;
   const message = request.messages[0];
   const phoneNumberId = request.metadata.phone_number_id;
@@ -372,7 +382,12 @@ const extractWhatsAppMessageDetails = (req) => {
   };
 };
 
-const processMessage = async (userId, msgBody, platform, name = 'someone') => {
+const processMessage = async (
+  userId: string,
+  msgBody: any,
+  platform: string,
+  name = 'someone',
+) => {
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
 
   // Check if user exists in firestore
@@ -402,6 +417,9 @@ const processMessage = async (userId, msgBody, platform, name = 'someone') => {
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
   const response = await openAiRequest(messagesToAi, 'gpt-4');
+  if (!response) {
+    throw new Error('Response from openAiRequest was void');
+  }
 
   // Store assistant's response to Firestore
   const aiResponse = response.data.choices[0].message.content;
