@@ -332,20 +332,20 @@ const createMessageToAi = async (
   });
 }; */
 
-const openAiRequest = async (messages: any[], model: string): Promise<any> => {
+const openAiRequest = async (messages: any[], model: string) => {
   functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messages)}`);
-
   try {
     const completion = await openai.createChatCompletion({
       model,
-      temperature: 1,
       messages,
     });
-    functions.logger.info(completion.data.choices[0].message);
-    return completion.data.choices[0].message;
+    functions.logger.info(`Usage: ${JSON.stringify(completion?.data?.usage)}`);
+    functions.logger.info(completion?.data?.choices?.[0]?.message?.content);
+    return completion?.data?.choices?.[0]?.message?.content;
   } catch (error) {
-    functions.logger.error('Error in openAiRequest:', error);
+    functions.logger.error(`Error sending to OpenAI: ${error}`);
   }
+  return 'lol';
 };
 
 const extractWhatsAppMessageDetails = (req: {
@@ -408,9 +408,8 @@ const processMessage = async (
   }
 
   // Store assistant's response to Firestore
-  const aiResponse = response.data.choices[0].message.content;
-  await storeMessage(userId, aiResponse, 'assistant');
-  return aiResponse;
+  await storeMessage(userId, response, 'assistant');
+  return response;
 };
 
 const app = async (req, res) => {
