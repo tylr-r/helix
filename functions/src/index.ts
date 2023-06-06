@@ -6,6 +6,7 @@ import { config } from 'dotenv';
 import admin from 'firebase-admin';
 
 const openaitoken = process.env.OPENAI_TOKEN;
+const openAiOrgId = process.env.OPENAI_ORG_ID;
 const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
@@ -13,9 +14,10 @@ const notionBlockId = process.env.NOTION_BLOCK_ID;
 
 import { Configuration, OpenAIApi } from 'openai';
 const configuration = new Configuration({
-  organization: 'org-32kC0J0s9sPLuPsz6De5btyE',
+  organization: openAiOrgId,
   apiKey: openaitoken,
 });
+
 const openai = new OpenAIApi(configuration);
 
 admin.initializeApp();
@@ -163,16 +165,35 @@ const storeMessage = async (from: string, message: any, role: string) => {
     functions.logger.error(`Error storing message: ${error}`);
   }
 };
+
+const getFbUserInfo = async (userId: string): Promise<any> => {
+  functions.logger.log('Getting user info from Facebook');
+  await axios
+    .get(`https://graph.facebook.com/${userId}`, {
+      params: {
+        fields: 'first_name,last_name',
+        access_token: pageAccessToken,
+      },
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    })
+    .then((response) => {
+      return response;
+    })
+    .catch((error: any) => {
+      functions.logger.error(`Error getting user info from Facebook: ${error}`);
+    });
+};
+
 const getUserInfo = async (userId: string, platform: string, name: string) => {
   const start = Date.now();
+  functions.logger.log('Getting user info');
   const infoCollectionRef = admin
     .firestore()
     .collection('chats')
     .doc(userId)
     .collection('info');
-
-  functions.logger.log('Getting user info');
-
   try {
     const snapshot = await infoCollectionRef.limit(1).get();
     if (snapshot.docs.length > 0) {
@@ -180,70 +201,36 @@ const getUserInfo = async (userId: string, platform: string, name: string) => {
       const end = Date.now();
       functions.logger.log(`getUserInfo took ${end - start} ms`);
       return snapshot.docs[0].data();
-    } else {
-      functions.logger.log('User info not found');
-      if (platform === 'messenger') {
-        try {
-          const response = await getFbUserInfo();
-          const firstName = response.data.first_name || name;
-          const lastName = response.data.last_name || '';
-          return {
-            psid: userId,
-            first_name: firstName,
-            last_name: lastName,
-            platform: 'messenger',
-          };
-        } catch (error) {
-          functions.logger.error(
-            `Error getting user info from Facebook: ${error}`,
-          );
-        }
-      } else if (platform === 'whatsapp') {
-        functions.logger.log('Using default info for WhatsApp');
-        return {
-          psid: userId,
-          platform: 'whatsapp',
-          first_name: name,
-        };
-      } else {
-        functions.logger.log('Using default info for unknown platform');
-        return {
-          psid: userId,
-          platform: 'unknown',
-          first_name: 'someone',
-        };
-      }
     }
+    functions.logger.log(`User info doesn't exist`);
   } catch (error) {
     functions.logger.error(`Error getting user info from Firestore: ${error}`);
   }
+
+  functions.logger.log('User info not found');
+
+  if (platform === 'messenger') {
+    try {
+      const response = await getFbUserInfo(userId);
+      const firstName = response.data.first_name || name;
+      const lastName = response.data.last_name || '';
+      return {
+        psid: userId,
+        first_name: firstName,
+        last_name: lastName,
+        platform: 'messenger',
+      };
+    } catch (error) {
+      functions.logger.error(`Error getting user info from Facebook: ${error}`);
+    }
+  } else if (platform === 'whatsapp') {
+    functions.logger.log('Using default info for WhatsApp');
+  }
   return {
     psid: userId,
-    platform: 'unknown',
-    first_name: 'someone',
+    platform: platform === 'whatsapp' ? 'whatsapp' : 'unknown',
+    first_name: name || 'someone',
   };
-
-  async function getFbUserInfo(): Promise<any> {
-    functions.logger.log('Getting user info from Facebook');
-    await axios
-      .get(`https://graph.facebook.com/${userId}`, {
-        params: {
-          fields: 'first_name,last_name',
-          access_token: pageAccessToken,
-        },
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-      .then((response) => {
-        return response;
-      })
-      .catch((error: any) => {
-        functions.logger.error(
-          `Error getting user info from Facebook: ${error}`,
-        );
-      });
-  }
 };
 
 /* const saveConversationSummary = async (userId: string, conversation: any) => {
@@ -408,11 +395,12 @@ const processMessage = async (
   }
 
   // Store assistant's response to Firestore
-  await storeMessage(userId, response, 'assistant');
+  storeMessage(userId, response, 'assistant');
   return response;
 };
 
 const app = async (req, res) => {
+  const startTime = new Date();
   functions.logger.log('running app function!');
 
   functions.logger.info(req.body, { structuredData: true });
@@ -488,7 +476,10 @@ const app = async (req, res) => {
 
         const aiResponse = await processMessage(userId, msgBody, 'messenger');
         await sendMessengerMessage(userId, aiResponse);
-        return functions.logger.log('Finished Messenger function');
+        const endTime = new Date();
+        const timeDiff = endTime.getTime() - startTime.getTime();
+        functions.logger.log('Whole function time: ' + timeDiff);
+        return functions.logger.debug('Finished Messenger function');
       }
       return functions.logger.log('Not a message');
     }
