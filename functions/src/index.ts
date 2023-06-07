@@ -77,9 +77,9 @@ const sendWhatsAppReceipt = async (phone_number_id: string, msgId: string) => {
   }
 };
 
-const markMessengerAsSeen = (userId: string) => {
+const markMessengerAsSeen = async (userId: string) => {
   try {
-    axios({
+    await axios({
       method: 'POST',
       url: `https://graph.facebook.com/v16.0/278067462233855/messages?access_token=${pageAccessToken}`,
       data: {
@@ -153,7 +153,7 @@ const storeMessage = async (from: string, message: any, role: string) => {
   try {
     await admin
       .firestore()
-      .collection('chats')
+      .collection('users')
       .doc(from)
       .collection('conversation')
       .add({
@@ -166,8 +166,50 @@ const storeMessage = async (from: string, message: any, role: string) => {
   }
 };
 
-const getFbUserInfo = async (userId: string): Promise<any> => {
-  functions.logger.log('Getting user info from Facebook');
+// Store message summary
+const storeMessageSummary = async (userId: string, message: string) => {
+  functions.logger.log('Storing message summary with PaLM');
+  try {
+    await admin
+      .firestore()
+      .collection('users')
+      .doc(userId)
+      .collection('summaries')
+      .add({
+        text: message,
+        userId,
+        creation: admin.firestore.FieldValue.serverTimestamp(),
+      });
+  } catch (error) {
+    functions.logger.error(`Error storing message summary: ${error}`);
+  }
+};
+
+// Store user info
+const storeUserInfo = async (
+  userId: string,
+  platform: string,
+  name: string,
+) => {
+  functions.logger.debug('Storing user info for' + name);
+  try {
+    await admin
+      .firestore()
+      .collection('users')
+      .doc(userId)
+      .collection('info')
+      .add({
+        userId,
+        platform,
+        name,
+      });
+  } catch (error) {
+    functions.logger.error(`Error storing message: ${error}`);
+  }
+};
+
+const getFbUserInfo = async (userId: string) => {
+  functions.logger.log(`Getting user info from Facebook for ${userId}`);
   await axios
     .get(`https://graph.facebook.com/${userId}`, {
       params: {
@@ -179,11 +221,29 @@ const getFbUserInfo = async (userId: string): Promise<any> => {
       },
     })
     .then((response) => {
-      return response;
+      functions.logger.log(`Response from FB user info: ${JSON.stringify(response)}`);
+      const firstName = response.data.first_name
+        ? response.data.first_name
+        : 'someone';
+      const lastName = response.data.last_name || '';
+      const name = lastName != '' ? firstName + ' ' + lastName : firstName;
+      storeUserInfo(userId, 'messenger', name);
+      return {
+        psid: userId,
+        first_name: firstName,
+        last_name: lastName,
+        platform: 'messenger',
+      };
     })
     .catch((error: any) => {
       functions.logger.error(`Error getting user info from Facebook: ${error}`);
     });
+  return {
+    psid: userId,
+    platform: 'messenger',
+    first_name: 'someone',
+    last_name: '',
+  };
 };
 
 const getUserInfo = async (userId: string, platform: string, name: string) => {
@@ -191,53 +251,42 @@ const getUserInfo = async (userId: string, platform: string, name: string) => {
   functions.logger.log('Getting user info');
   const infoCollectionRef = admin
     .firestore()
-    .collection('chats')
+    .collection('users')
     .doc(userId)
     .collection('info');
-  try {
-    const snapshot = await infoCollectionRef.limit(1).get();
-    if (snapshot.docs.length > 0) {
-      functions.logger.log('User info found');
-      const end = Date.now();
-      functions.logger.log(`getUserInfo took ${end - start} ms`);
-      return snapshot.docs[0].data();
+  const snapshot = await infoCollectionRef.limit(1).get();
+  if (snapshot.docs.length > 0) {
+    functions.logger.log('User info found');
+    const end = Date.now();
+    functions.logger.log(`getUserInfo took ${end - start} ms`);
+    return snapshot.docs[0].data();
+  } else {
+    functions.logger.log('User info not found');
+    if (platform === 'messenger') {
+      try {
+        return await getFbUserInfo(userId);
+      } catch (error) {
+        functions.logger.error(
+          `Error getting user info from Facebook: ${error}`,
+        );
+      }
+    } else if (platform === 'whatsapp') {
+      functions.logger.log('Using default info for WhatsApp');
+      storeUserInfo(userId, platform, name);
     }
-    functions.logger.log(`User info doesn't exist`);
-  } catch (error) {
-    functions.logger.error(`Error getting user info from Firestore: ${error}`);
+    return {
+      psid: userId,
+      platform: platform === 'whatsapp' ? 'whatsapp' : 'unknown',
+      first_name: name || 'someone',
+    };
   }
-
-  functions.logger.log('User info not found');
-
-  if (platform === 'messenger') {
-    try {
-      const response = await getFbUserInfo(userId);
-      const firstName = response.data.first_name || name;
-      const lastName = response.data.last_name || '';
-      return {
-        psid: userId,
-        first_name: firstName,
-        last_name: lastName,
-        platform: 'messenger',
-      };
-    } catch (error) {
-      functions.logger.error(`Error getting user info from Facebook: ${error}`);
-    }
-  } else if (platform === 'whatsapp') {
-    functions.logger.log('Using default info for WhatsApp');
-  }
-  return {
-    psid: userId,
-    platform: platform === 'whatsapp' ? 'whatsapp' : 'unknown',
-    first_name: name || 'someone',
-  };
 };
 
 /* const saveConversationSummary = async (userId: string, conversation: any) => {
   try {
     admin
       .firestore()
-      .collection('chats')
+      .collection('users')
       .doc(userId)
       .collection('conversation')
       .add({
@@ -267,15 +316,15 @@ const getUserInfo = async (userId: string, platform: string, name: string) => {
   return ``;
 }; */
 
-const getPreviousMessages = async (from: string) => {
+const getPreviousMessages = async (from: string, amount: number) => {
   functions.logger.log('getting existing messages');
   const snapshot = await admin
     .firestore()
-    .collection('chats')
+    .collection('users')
     .doc(from)
     .collection('conversation')
     .orderBy('creation', 'desc')
-    .limit(5) // Limit the number of messages returned to 5
+    .limit(amount) // Limit the number of messages returned
     .get();
   return snapshot.docs.map((doc: { data: () => any }) => doc.data()).reverse();
 };
@@ -344,7 +393,9 @@ const extractWhatsAppMessageDetails = (req: {
   const userId = message.from;
   const msgId = message.id;
   const msgBody = message.text.body;
-  const name = message.sender?.name ?? 'someone';
+  const name = request.contacts[0]?.profile.name;
+
+  functions.logger.log(`Whatsapp request: ${JSON.stringify(request)}`);
 
   return {
     userId,
@@ -359,7 +410,7 @@ const processMessage = async (
   userId: string,
   msgBody: any,
   platform: string,
-  name = 'someone',
+  name: string,
 ) => {
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
 
@@ -369,14 +420,27 @@ const processMessage = async (
   functions.logger.log('user info: ' + JSON.stringify(userInfo));
 
   await storeMessage(userId, msgBody, 'user');
-  const messages = await getPreviousMessages(userId);
+  const messages = await getPreviousMessages(userId, 5);
+
+  functions.logger.log('previous messages: ' + JSON.stringify(messages));
 
   // Custom Reminder
-  const customReminder = `you are talking with ${userInfo.first_name} and the current time is ${currentTime}`;
+  const customReminder = `you are talking with ${userInfo.first_name} on ${platform} and the current time is ${currentTime}`;
   functions.logger.log('customReminder: ' + customReminder);
 
   // Get conversation summary
   // const conversationSummary = await getConversationSummary(messages);
+  const bigMessageSummary = await getPreviousMessages(userId, 25);
+  const bigMessageSummaryCleaned = JSON.stringify(
+    bigMessageSummary.map((msg: { role: string; text: string }) => ({
+      name: msg.role === 'assistant' ? 'Tylr' : userInfo.first_name,
+      content: msg.text,
+    })),
+  )
+    .replace(/user/g, name)
+    .replace(/assistant/g, 'Tylr');
+
+  storeMessageSummary(userId, bigMessageSummaryCleaned);
 
   // Create messages to AI
   const messagesToAi = await createMessageToAi(
@@ -385,11 +449,11 @@ const processMessage = async (
     customReminder,
     name,
   );
-  functions.logger.log('messagesToAi: ' + JSON.stringify(messagesToAi));
+  // functions.logger.log('messagesToAi: ' + JSON.stringify(messagesToAi));
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
-  const response = await openAiRequest(messagesToAi, 'gpt-4');
+  const response = await openAiRequest(messagesToAi, 'gpt-3.5-turbo');
   if (!response) {
     throw new Error('Response from openAiRequest was void');
   }
@@ -471,10 +535,15 @@ const app = async (req, res) => {
         const msgBody = entry.messaging[0].message.text;
 
         // Mark message as seen
-        markMessengerAsSeen(userId);
+        await markMessengerAsSeen(userId);
         sendMessengerReceipt(userId, 'typing_on');
 
-        const aiResponse = await processMessage(userId, msgBody, 'messenger');
+        const aiResponse = await processMessage(
+          userId,
+          msgBody,
+          'messenger',
+          'someone',
+        );
         await sendMessengerMessage(userId, aiResponse);
         const endTime = new Date();
         const timeDiff = endTime.getTime() - startTime.getTime();
