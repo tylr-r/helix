@@ -221,7 +221,9 @@ const getFbUserInfo = async (userId: string) => {
       },
     })
     .then((response) => {
-      functions.logger.log(`Response from FB user info: ${JSON.stringify(response)}`);
+      functions.logger.log(
+        `Response from FB user info: ${JSON.stringify(response.data)}`,
+      );
       const firstName = response.data.first_name
         ? response.data.first_name
         : 'someone';
@@ -453,7 +455,7 @@ const processMessage = async (
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
-  const response = await openAiRequest(messagesToAi, 'gpt-3.5-turbo');
+  const response = await openAiRequest(messagesToAi, 'gpt-4');
   if (!response) {
     throw new Error('Response from openAiRequest was void');
   }
