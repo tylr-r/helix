@@ -185,6 +185,30 @@ const storeMessageSummary = async (userId: string, message: string) => {
   }
 };
 
+// Get Message Summary
+const getConversationSummary = async (userId: string) => {
+  functions.logger.log('Getting message summary');
+  try {
+    const snapshot = await admin
+      .firestore()
+      .collection('users')
+      .doc(userId)
+      .collection('summaries')
+      .orderBy('creation', 'asc')
+      .limit(1)
+      .get();
+    functions.logger.log(`Conversation summary: ${snapshot}`);
+    /* const cleanedString = JSON.stringify(
+    JSON.parse(snapshot.docs[0].data().text),
+  );
+  functions.logger.log(`Conversation summary: ${cleanedString}`); */
+    return snapshot.docs[0].data().text;
+  } catch (error) {
+    functions.logger.error(`Error getting message summary: ${error}`);
+    return '';
+  }
+};
+
 // Store user info
 const storeUserInfo = async (
   userId: string,
@@ -284,40 +308,6 @@ const getUserInfo = async (userId: string, platform: string, name: string) => {
   }
 };
 
-/* const saveConversationSummary = async (userId: string, conversation: any) => {
-  try {
-    admin
-      .firestore()
-      .collection('users')
-      .doc(userId)
-      .collection('conversation')
-      .add({
-        conversation: conversation,
-        creation: admin.firestore.FieldValue.serverTimestamp(),
-      });
-  } catch (error) {
-    functions.logger.error(`Error storing conversation summary: ${error}`);
-  }
-}; */
-
-// ask openai for a summary of the conversation
-/* const getConversationSummary = async (conversation) => {
-  const prompt = [
-    {
-      role: 'user',
-      content: `How would you sum up the important parts of this conversation in a format you would like to reference later to remember how to talk with the "user" in this? You are trying to compress important features like important subjects and writing style into a max of 120 words:
-  ${conversation}`,
-    },
-  ];
-  try {
-    const response = await openAiRequest(prompt, 'gpt-4');
-    return response.data.choices[0].message.content;
-  } catch (error) {
-    functions.logger.error(`Error getting conversation summary: ${error}`);
-  }
-  return ``;
-}; */
-
 const getPreviousMessages = async (from: string, amount: number) => {
   functions.logger.log('getting existing messages');
   const snapshot = await admin
@@ -336,11 +326,10 @@ const createMessageToAi = async (
   msg_body: any,
   customReminder: string,
   name: string,
+  summary: string,
 ) => {
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
-  // const summary = await getConversationSummary(messages);
-  // functions.logger.log(`Conversation summary: ${summary}`);
   return [
     ...system,
     ...main,
@@ -351,7 +340,10 @@ const createMessageToAi = async (
       name: msg.role === 'assistant' ? 'Tylr' : name,
     })),
     { role: 'user', content: `${msg_body}`, name: name },
-    // { role: 'system', content: `${summary}` },
+    {
+      role: 'system',
+      content: `Here is a summary of the previous conversation: ${summary}`,
+    },
     ...reminder,
     {
       role: 'system',
@@ -418,6 +410,7 @@ const processMessage = async (
 
   // Check if user exists in firestore
   const userInfo = await getUserInfo(userId, platform, name);
+  const summary = await getConversationSummary(userId);
 
   functions.logger.log('user info: ' + JSON.stringify(userInfo));
 
@@ -450,6 +443,7 @@ const processMessage = async (
     msgBody,
     customReminder,
     name,
+    summary,
   );
   // functions.logger.log('messagesToAi: ' + JSON.stringify(messagesToAi));
 
