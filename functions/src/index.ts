@@ -28,6 +28,23 @@ const currentTime = new Date().toLocaleString('en-US', {
   timeZone: 'America/Los_Angeles',
 });
 
+const facebookGraphRequest = async (
+  endpoint: string,
+  data: any,
+  errorMsg: string,
+) => {
+  try {
+    return await axios({
+      method: 'POST',
+      url: `https://graph.facebook.com/v16.0/${endpoint}?access_token=${pageAccessToken}`,
+      data,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (error) {
+    return functions.logger.error(`${errorMsg}: ${error}`);
+  }
+};
+
 const getPrimer = async () => {
   try {
     const response = await axios({
@@ -58,95 +75,53 @@ const getPrimer = async () => {
 };
 
 const sendWhatsAppReceipt = async (phone_number_id: string, msgId: string) => {
-  try {
-    await axios({
-      method: 'POST',
-      url: `https://graph.facebook.com/v16.0/${phone_number_id}/messages?access_token=${pageAccessToken}`,
-      data: {
-        messaging_product: 'whatsapp',
-        status: 'read',
-        message_id: msgId,
-      },
-      headers: { 'Content-Type': 'application/json' },
-    }).catch((error: any) => {
-      functions.logger.error('Error while marking WhatsApp as seen:', error);
-    });
-  } catch (error) {
-    functions.logger.error(`Error sending receipt: ${error}`);
-    throw error;
-  }
-};
-
-const markMessengerAsSeen = async (userId: string) => {
-  try {
-    await axios({
-      method: 'POST',
-      url: `https://graph.facebook.com/v16.0/278067462233855/messages?access_token=${pageAccessToken}`,
-      data: {
-        recipient: { id: userId },
-        sender_action: 'mark_seen',
-      },
-      headers: { 'Content-Type': 'application/json' },
-    });
-  } catch (error) {
-    functions.logger.error('Error while marking Messenger as seen:', error);
-  }
+  await facebookGraphRequest(
+    `${phone_number_id}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      status: 'read',
+      message_id: msgId,
+    },
+    'Error while marking WhatsApp as seen',
+  );
 };
 
 // Send Messenger receipt
-const sendMessengerReceipt = async (userId: string, typingStatus: string) => {
-  functions.logger.log('Sending Messenger receipt');
-  return await axios({
-    method: 'POST',
-    url: `https://graph.facebook.com/v16.0/me/messages?access_token=${pageAccessToken}`,
-    data: {
+const sendMessengerReceipt = async (userId: string, sender_action: string) => {
+  await facebookGraphRequest(
+    'me/messages',
+    {
       recipient: { id: userId },
-      sender_action: typingStatus,
+      sender_action,
     },
-    headers: { 'Content-Type': 'application/json' },
-  }).catch((error: any) => {
-    functions.logger.error(`Error sending messenger receipt: ${error}`);
-  });
+    `Error while sending Messenger action: ${sender_action}`,
+  );
 };
 
 // Send Messenger message
-const sendMessengerMessage = async (userId: string, response) => {
-  functions.logger.log('Sending Messenger message');
-  return await axios({
-    method: 'POST',
-    url: `https://graph.facebook.com/v16.0/me/messages?access_token=${pageAccessToken}`,
-    data: {
+const sendMessengerMessage = async (userId: string, response: string) => {
+  await facebookGraphRequest(
+    'me/messages',
+    {
       recipient: { id: userId },
       message: { text: `${response}` },
     },
-    headers: { 'Content-Type': 'application/json' },
-  }).catch((error: any) => {
-    functions.logger.error(`Error sending messenger message: ${error}`);
-  });
+    'Error while sending Messenger message',
+  );
 };
 
 // Send WhatsApp message
-const sendWhatsAppMessage = async (userId: string, from: string, response) => {
+const sendWhatsAppMessage = async (userId: string, from: string, response: string) => {
   functions.logger.log('Sending WhatsApp message');
-  try {
-    await axios({
-      method: 'POST',
-      url: `https://graph.facebook.com/v16.0/${userId}/messages?access_token=${pageAccessToken}`,
-      data: {
-        messaging_product: 'whatsapp',
-        to: from,
-        text: { body: `${response}` },
-      },
-      headers: { 'Content-Type': 'application/json' },
-    }).catch((error: any) => {
-      functions.logger.error(
-        'Error during Assistance response to user:',
-        error,
-      );
-    });
-  } catch (error) {
-    functions.logger.error(`Error sending whatsapp message: ${error}`);
-  }
+  await facebookGraphRequest(
+    `${userId}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      to: from,
+      text: { body: `${response}` },
+    },
+    'Error while sending WhatsApp message',
+  );
 };
 
 const storeMessage = async (from: string, message: any, role: string) => {
@@ -234,32 +209,28 @@ const storeUserInfo = async (
 
 const getFbUserInfo = async (userId: string, platform: string) => {
   functions.logger.log(`Getting user info from Facebook for ${userId}`);
-  await axios
-    .get(`https://graph.facebook.com/${userId}`, {
-      params: {
-        access_token: pageAccessToken,
-      },
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    })
+  await facebookGraphRequest(
+    userId,
+    {},
+    `Error getting user info from Facebook for ${userId}`,
+  )
     .then((response) => {
       functions.logger.log(
-        `Response from FB user info: ${JSON.stringify(response.data)}`,
+        `Response from FB user info: ${JSON.stringify(response?.data)}`,
       );
       let firstName: string;
       let lastName: string;
       let name: string;
       if (platform === 'messenger') {
-        firstName = response.data.first_name
+        firstName = response?.data.first_name
           ? response.data.first_name
           : 'someone';
-        lastName = response.data.last_name || '';
+        lastName = response?.data.last_name || '';
         name = lastName != '' ? firstName + ' ' + lastName : firstName;
         storeUserInfo(userId, platform, name);
       } else {
-        firstName = response.data.name ? response.data.name : 'someone';
-        lastName = response.data.last_name || '';
+        firstName = response?.data.name ? response.data.name : 'someone';
+        lastName = response?.data.last_name || '';
         name = lastName != '' ? firstName + ' ' + lastName : firstName;
         storeUserInfo(userId, platform, name);
       }
@@ -560,7 +531,7 @@ const app = async (req, res) => {
         }
 
         // Mark message as seen
-        await markMessengerAsSeen(userId);
+        await sendMessengerReceipt(userId, 'mark_seen');
         sendMessengerReceipt(userId, 'typing_on');
 
         const aiResponse = await processMessage(
