@@ -358,7 +358,7 @@ const openAiRequest = async (messages: any[], model: string) => {
       messages,
     });
     functions.logger.info(`Usage: ${JSON.stringify(completion?.data?.usage)}`);
-    functions.logger.info(completion?.data?.choices?.[0]?.message?.content);
+    functions.logger.log(completion?.data?.choices?.[0]?.message?.content);
     return completion?.data?.choices?.[0]?.message?.content;
   } catch (error) {
     functions.logger.error(`Error sending to OpenAI: ${error}`);
@@ -452,8 +452,6 @@ const app = async (req, res) => {
   functions.logger.log('running app function!');
 
   functions.logger.info(JSON.stringify(req.body));
-  functions.logger.info(JSON.stringify(req.body.entry[0].messaging[0]));
-  console.log(JSON.stringify(req.body));
 
   // Webhook verification
   if (req.method === 'GET') {
