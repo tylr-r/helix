@@ -20,8 +20,6 @@ const configuration = new Configuration({
 
 const openai = new OpenAIApi(configuration);
 
-admin.initializeApp();
-
 config();
 
 const currentTime = new Date().toLocaleString('en-US', {
@@ -111,7 +109,11 @@ const sendMessengerMessage = async (userId: string, response: string) => {
 };
 
 // Send WhatsApp message
-const sendWhatsAppMessage = async (userId: string, from: string, response: string) => {
+const sendWhatsAppMessage = async (
+  userId: string,
+  from: string,
+  response: string,
+) => {
   functions.logger.log('Sending WhatsApp message');
   await facebookGraphRequest(
     `${userId}/messages`,
@@ -340,22 +342,19 @@ const createMessageToAi = async (
   ];
 };
 
-/* const openAiRequest = async (messagesToAi, model) => {
-  functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messagesToAi)}`);
-  return await openai.chatCompletion({
-    engine: model,
-    prompt: messagesToAi,
-    maxTokens: 150,
-    temperature: 0.9,
-  });
-}; */
-
-const openAiRequest = async (messages: any[], model: string) => {
+const openAiRequest = async (
+  messages: any[],
+  model: string,
+  max_tokens?: number,
+  temperature?: number,
+) => {
   functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messages)}`);
   try {
     const completion = await openai.createChatCompletion({
       model,
       messages,
+      max_tokens,
+      temperature,
     });
     functions.logger.info(`Usage: ${JSON.stringify(completion?.data?.usage)}`);
     functions.logger.log(completion?.data?.choices?.[0]?.message?.content);
@@ -433,11 +432,10 @@ const processMessage = async (
     name,
     summary,
   );
-  // functions.logger.log('messagesToAi: ' + JSON.stringify(messagesToAi));
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
-  const response = await openAiRequest(messagesToAi, 'gpt-4');
+  const response = await openAiRequest(messagesToAi, 'gpt-4', 500, 1);
   if (!response) {
     throw new Error('Response from openAiRequest was void');
   }
@@ -475,6 +473,8 @@ const app = async (req, res) => {
   if (req.method === 'POST') {
     res.sendStatus(200);
     functions.logger.log('Processing POST request');
+
+    admin.initializeApp();
 
     let platform = req.body.object;
 
