@@ -232,12 +232,11 @@ const storeUserInfo = async (
   }
 };
 
-const getFbUserInfo = async (userId: string) => {
+const getFbUserInfo = async (userId: string, platform: string) => {
   functions.logger.log(`Getting user info from Facebook for ${userId}`);
   await axios
     .get(`https://graph.facebook.com/${userId}`, {
       params: {
-        fields: 'first_name,last_name',
         access_token: pageAccessToken,
       },
       headers: {
@@ -248,17 +247,27 @@ const getFbUserInfo = async (userId: string) => {
       functions.logger.log(
         `Response from FB user info: ${JSON.stringify(response.data)}`,
       );
-      const firstName = response.data.first_name
-        ? response.data.first_name
-        : 'someone';
-      const lastName = response.data.last_name || '';
-      const name = lastName != '' ? firstName + ' ' + lastName : firstName;
-      storeUserInfo(userId, 'messenger', name);
+      let firstName: string;
+      let lastName: string;
+      let name: string;
+      if (platform === 'messenger') {
+        firstName = response.data.first_name
+          ? response.data.first_name
+          : 'someone';
+        lastName = response.data.last_name || '';
+        name = lastName != '' ? firstName + ' ' + lastName : firstName;
+        storeUserInfo(userId, platform, name);
+      } else {
+        firstName = response.data.name ? response.data.name : 'someone';
+        lastName = response.data.last_name || '';
+        name = lastName != '' ? firstName + ' ' + lastName : firstName;
+        storeUserInfo(userId, platform, name);
+      }
       return {
         psid: userId,
         first_name: firstName,
         last_name: lastName,
-        platform: 'messenger',
+        platform,
       };
     })
     .catch((error: any) => {
@@ -266,9 +275,9 @@ const getFbUserInfo = async (userId: string) => {
     });
   return {
     psid: userId,
-    platform: 'messenger',
     first_name: 'someone',
     last_name: '',
+    platform,
   };
 };
 
@@ -290,7 +299,15 @@ const getUserInfo = async (userId: string, platform: string, name: string) => {
     functions.logger.log('User info not found');
     if (platform === 'messenger') {
       try {
-        return await getFbUserInfo(userId);
+        return await getFbUserInfo(userId, platform);
+      } catch (error) {
+        functions.logger.error(
+          `Error getting user info from Facebook: ${error}`,
+        );
+      }
+    } else if (platform === 'instagram') {
+      try {
+        return await getFbUserInfo(userId, platform);
       } catch (error) {
         functions.logger.error(
           `Error getting user info from Facebook: ${error}`,
@@ -463,7 +480,9 @@ const app = async (req, res) => {
   const startTime = new Date();
   functions.logger.log('running app function!');
 
-  functions.logger.info(req.body, { structuredData: true });
+  functions.logger.info(JSON.stringify(req.body));
+  functions.logger.info(JSON.stringify(req.body.entry[0].messaging[0]));
+  console.log(JSON.stringify(req.body));
 
   // Webhook verification
   if (req.method === 'GET') {
@@ -488,8 +507,11 @@ const app = async (req, res) => {
     res.sendStatus(200);
     functions.logger.log('Processing POST request');
 
+    let platform = req.body.object;
+
     // WhatsApp
-    if (req.body.object === 'whatsapp_business_account') {
+    if (platform === 'whatsapp_business_account') {
+      platform = 'whatsapp';
       functions.logger.log('Processing whatsapp request');
       if (
         req.body.entry &&
@@ -511,7 +533,7 @@ const app = async (req, res) => {
         const aiResponse = await processMessage(
           userId,
           msgBody,
-          'whatsapp',
+          platform,
           name,
         );
         functions.logger.log('sending whatsapp message');
@@ -523,12 +545,19 @@ const app = async (req, res) => {
     }
 
     // Messenger
-    if (req.body.object === 'page') {
+    if (platform === 'page' || platform === 'instagram') {
       functions.logger.log('Processing page request');
+      if (platform === 'page') {
+        platform = 'messenger';
+      }
       const entry = req.body.entry[0];
       if (entry.messaging) {
         const userId = entry.messaging[0].sender.id;
         const msgBody = entry.messaging[0].message.text;
+
+        if (!msgBody) {
+          return functions.logger.log('Not a message');
+        }
 
         // Mark message as seen
         await markMessengerAsSeen(userId);
@@ -537,7 +566,7 @@ const app = async (req, res) => {
         const aiResponse = await processMessage(
           userId,
           msgBody,
-          'messenger',
+          platform,
           'someone',
         );
         await sendMessengerMessage(userId, aiResponse);
