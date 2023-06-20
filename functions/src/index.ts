@@ -349,18 +349,65 @@ const openAiRequest = async (
   model: string,
   max_tokens?: number,
   temperature?: number,
+  function_call?: boolean,
+  ai_functions?: any[],
 ) => {
   functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messages)}`);
+  let completion;
   try {
-    const completion = await openai.createChatCompletion({
-      model,
-      messages,
-      max_tokens,
-      temperature,
-    });
-    functions.logger.info(`Usage: ${JSON.stringify(completion?.data?.usage)}`);
-    functions.logger.log(completion?.data?.choices?.[0]?.message?.content);
-    return completion?.data?.choices?.[0]?.message?.content;
+    if (function_call && ai_functions !== undefined) {
+      functions.logger.log('Starting function call');
+      const name = ai_functions[0].name;
+      functions.logger.debug(
+        `function call: ${JSON.stringify({
+          model: 'gpt-3.5-turbo-0613',
+          messages,
+          max_tokens,
+          temperature,
+          function_call: {
+            name,
+          },
+          functions: ai_functions,
+        })}`,
+      );
+      completion = await openai
+        .createChatCompletion({
+          model: 'gpt-3.5-turbo-0613',
+          messages,
+          max_tokens,
+          temperature,
+          function_call: {
+            name,
+          },
+          functions: ai_functions,
+        })
+        .catch((error) => {
+          functions.logger.error(`Error sending to OpenAI: ${error}`);
+        });
+      functions.logger.info(
+        `Usage: ${JSON.stringify(completion?.data?.usage)}`,
+      );
+      const result =
+        completion?.data?.choices[0].message.function_call.arguments;
+      return result;
+    } else {
+      functions.logger.log('Starting normal call');
+      completion = await openai
+        .createChatCompletion({
+          model,
+          messages,
+          max_tokens,
+          temperature,
+        })
+        .catch((error) => {
+          functions.logger.error(`Error sending to OpenAI: ${error}`);
+        });
+      functions.logger.info(
+        `Usage: ${JSON.stringify(completion?.data?.usage)}`,
+      );
+      functions.logger.log(completion?.data?.choices?.[0]?.message?.content);
+      return completion?.data?.choices?.[0]?.message?.content;
+    }
   } catch (error) {
     functions.logger.error(`Error sending to OpenAI: ${error}`);
   }
@@ -391,7 +438,7 @@ const extractWhatsAppMessageDetails = (req: {
 
 const processMessage = async (
   userId: string,
-  msgBody: any,
+  msgBody: string,
   platform: string,
   name: string,
 ) => {
@@ -407,6 +454,45 @@ const processMessage = async (
   const messages = await getPreviousMessages(userId, 5);
 
   functions.logger.log('previous messages: ' + JSON.stringify(messages));
+
+  // Check to see if AI needs to know it's own history
+  const needHistory = await openAiRequest(
+    [
+      {
+        role: 'system',
+        content: 'You are Tylr, a real human.',
+      },
+      {
+        role: 'user',
+        content: `Does a response to the following message benefit if you know your personal experiences or stored memories: "${msgBody}"?`,
+      },
+    ],
+    'gpt-3.5-turbo-0613',
+    600,
+    0.5,
+    true,
+    [
+      {
+        name: 'history_need',
+        description:
+          "Determine if the Tylr's history or background information is necessary to formulate a substantial response to the user's message.",
+        parameters: {
+          type: 'object',
+          properties: {
+            need_history: {
+              type: 'boolean',
+              description: 'a true or false',
+            },
+          },
+          required: ['need_history'],
+        },
+      },
+    ],
+  );
+
+  functions.logger.log(
+    `needHistory: ${JSON.stringify(JSON.parse(needHistory))}`,
+  );
 
   // Custom Reminder
   const customReminder = `you are talking with ${userInfo.first_name} on ${platform} and the current time is ${currentTime}`;
