@@ -20,6 +20,8 @@ const configuration = new Configuration({
 
 const openai = new OpenAIApi(configuration);
 
+admin.initializeApp();
+
 config();
 
 const currentTime = new Date().toLocaleString('en-US', {
@@ -473,8 +475,6 @@ const app = async (req, res) => {
   if (req.method === 'POST') {
     res.sendStatus(200);
     functions.logger.log('Processing POST request');
-
-    admin.initializeApp();
 
     let platform = req.body.object;
 
