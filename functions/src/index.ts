@@ -24,6 +24,13 @@ admin.initializeApp();
 
 config();
 
+// aggregate logs together
+const logs: string[] = [];
+const logLogs = (log: string) => {
+  functions.logger.log(log);
+  logs.push(log);
+};
+
 const currentTime = new Date().toLocaleString('en-US', {
   timeZone: 'America/Los_Angeles',
 });
@@ -33,19 +40,24 @@ const facebookGraphRequest = async (
   data: any,
   errorMsg: string,
 ) => {
+  const start = new Date();
   try {
-    return await axios({
+    const response = await axios({
       method: 'POST',
       url: `https://graph.facebook.com/v16.0/${endpoint}?access_token=${pageAccessToken}`,
       data,
       headers: { 'Content-Type': 'application/json' },
     });
+    const end = new Date();
+    logLogs(`Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`);
+    return response;
   } catch (error) {
     return functions.logger.error(`${errorMsg}: ${error}`);
   }
 };
 
 const getPrimer = async () => {
+  const start = new Date();
   try {
     const response = await axios({
       method: 'get',
@@ -68,6 +80,8 @@ const getPrimer = async () => {
     }
 
     functions.logger.log('Parsed primer text: ' + JSON.stringify(obj));
+    const end = new Date();
+    logLogs(`Time to get primer: ${end.getTime() - start.getTime()}ms`);
     return obj;
   } catch (error) {
     functions.logger.error(`Error getting primer: ${error}`);
@@ -112,16 +126,16 @@ const sendMessengerMessage = async (userId: string, response: string) => {
 
 // Send WhatsApp message
 const sendWhatsAppMessage = async (
+  phoneNumberId: string,
   userId: string,
-  from: string,
   response: string,
 ) => {
   functions.logger.log('Sending WhatsApp message');
   await facebookGraphRequest(
-    `${userId}/messages`,
+    `${phoneNumberId}/messages`,
     {
       messaging_product: 'whatsapp',
-      to: from,
+      to: userId,
       text: { body: `${response}` },
     },
     'Error while sending WhatsApp message',
@@ -129,6 +143,7 @@ const sendWhatsAppMessage = async (
 };
 
 const storeMessage = async (from: string, message: any, role: string) => {
+  functions.logger.log('Storing message with in Firestore');
   try {
     await admin
       .firestore()
@@ -146,161 +161,167 @@ const storeMessage = async (from: string, message: any, role: string) => {
 };
 
 // Store message summary
-const storeMessageSummary = async (userId: string, message: string) => {
-  functions.logger.log('Storing message summary with PaLM');
-  try {
-    await admin
-      .firestore()
-      .collection('users')
-      .doc(userId)
-      .collection('summaries')
-      .add({
-        text: message,
-        userId,
-        creation: admin.firestore.FieldValue.serverTimestamp(),
-      });
-  } catch (error) {
-    functions.logger.error(`Error storing message summary: ${error}`);
-  }
-};
+// const storeMessageSummary = async (userId: string, message: string) => {
+//   functions.logger.log('Storing message summary with PaLM');
+//   try {
+//     await admin
+//       .firestore()
+//       .collection('users')
+//       .doc(userId)
+//       .collection('summaries')
+//       .add({
+//         text: message,
+//         userId,
+//         creation: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//   } catch (error) {
+//     functions.logger.error(`Error storing message summary: ${error}`);
+//   }
+// };
 
 // Get Message Summary
-const getConversationSummary = async (userId: string) => {
-  functions.logger.log('Getting message summary');
-  try {
-    const snapshot = await admin
-      .firestore()
-      .collection('users')
-      .doc(userId)
-      .collection('summaries')
-      .orderBy('creation', 'asc')
-      .limit(1)
-      .get();
-    functions.logger.log(`Conversation summary: ${snapshot}`);
-    /* const cleanedString = JSON.stringify(
-    JSON.parse(snapshot.docs[0].data().text),
-  );
-  functions.logger.log(`Conversation summary: ${cleanedString}`); */
-    return snapshot.docs[0].data().text;
-  } catch (error) {
-    functions.logger.error(`Error getting message summary: ${error}`);
-    return '';
-  }
-};
+// const getConversationSummary = async (userId: string) => {
+//   functions.logger.log('Getting message summary');
+//   const start = new Date();
+//   try {
+//     const snapshot = await admin
+//       .firestore()
+//       .collection('users')
+//       .doc(userId)
+//       .collection('summaries')
+//       .orderBy('creation', 'asc')
+//       .limit(1)
+//       .get();
+//     functions.logger.log(`Conversation summary: ${snapshot}`);
+//     /* const cleanedString = JSON.stringify(
+//     JSON.parse(snapshot.docs[0].data().text),
+//   );
+//   functions.logger.log(`Conversation summary: ${cleanedString}`); */
+//     const end = new Date();
+//     logLogs(`Time to get summary: ${end.getTime() - start.getTime()}ms`);
+//     return snapshot.docs[0].data().text;
+//   } catch (error) {
+//     functions.logger.error(`Error getting message summary: ${error}`);
+//     return '';
+//   }
+// };
 
 // Store user info
-const storeUserInfo = async (
-  userId: string,
-  platform: string,
-  name: string,
-) => {
-  functions.logger.debug('Storing user info for' + name);
-  try {
-    await admin
-      .firestore()
-      .collection('users')
-      .doc(userId)
-      .collection('info')
-      .add({
-        userId,
-        platform,
-        name,
-      });
-  } catch (error) {
-    functions.logger.error(`Error storing message: ${error}`);
-  }
-};
+// const storeUserInfo = async (
+//   userId: string,
+//   platform: string,
+//   name: string,
+// ) => {
+//   functions.logger.debug('Storing user info for' + name);
+//   try {
+//     await admin
+//       .firestore()
+//       .collection('users')
+//       .doc(userId)
+//       .collection('info')
+//       .add({
+//         userId,
+//         platform,
+//         name,
+//       });
+//   } catch (error) {
+//     functions.logger.error(`Error storing message: ${error}`);
+//   }
+// };
 
-const getFbUserInfo = async (userId: string, platform: string) => {
-  functions.logger.log(`Getting user info from Facebook for ${userId}`);
-  await facebookGraphRequest(
-    userId,
-    {},
-    `Error getting user info from Facebook for ${userId}`,
-  )
-    .then((response) => {
-      functions.logger.log(
-        `Response from FB user info: ${JSON.stringify(response?.data)}`,
-      );
-      let firstName: string;
-      let lastName: string;
-      let name: string;
-      if (platform === 'messenger') {
-        firstName = response?.data.first_name
-          ? response.data.first_name
-          : 'someone';
-        lastName = response?.data.last_name || '';
-        name = lastName != '' ? firstName + ' ' + lastName : firstName;
-        storeUserInfo(userId, platform, name);
-      } else {
-        firstName = response?.data.name ? response.data.name : 'someone';
-        lastName = response?.data.last_name || '';
-        name = lastName != '' ? firstName + ' ' + lastName : firstName;
-        storeUserInfo(userId, platform, name);
-      }
-      return {
-        psid: userId,
-        first_name: firstName,
-        last_name: lastName,
-        platform,
-      };
-    })
-    .catch((error: any) => {
-      functions.logger.error(`Error getting user info from Facebook: ${error}`);
-    });
-  return {
-    psid: userId,
-    first_name: 'someone',
-    last_name: '',
-    platform,
-  };
-};
+// const getFbUserInfo = async (userId: string, platform: string) => {
+//   functions.logger.log(`Getting user info from Facebook for ${userId}`);
+//   await facebookGraphRequest(
+//     userId,
+//     {},
+//     `Error getting user info from Facebook for ${userId}`,
+//   )
+//     .then((response) => {
+//       functions.logger.log(
+//         `Response from FB user info: ${JSON.stringify(response?.data)}`,
+//       );
+//       let firstName: string;
+//       let lastName: string;
+//       let name: string;
+//       if (platform === 'messenger') {
+//         firstName = response?.data.first_name
+//           ? response.data.first_name
+//           : 'someone';
+//         lastName = response?.data.last_name || '';
+//         name = lastName != '' ? firstName + ' ' + lastName : firstName;
+//         if (response !== undefined) {
+//           storeUserInfo(userId, platform, name);
+//         }
+//       } else {
+//         firstName = response?.data.name ? response.data.name : 'someone';
+//         lastName = response?.data.last_name || '';
+//         name = lastName != '' ? firstName + ' ' + lastName : firstName;
+//         storeUserInfo(userId, platform, name);
+//       }
+//       return {
+//         psid: userId,
+//         first_name: firstName,
+//         last_name: lastName,
+//         platform,
+//       };
+//     })
+//     .catch((error: any) => {
+//       functions.logger.error(`Error getting user info from Facebook: ${error}`);
+//     });
+//   return {
+//     psid: userId,
+//     first_name: 'someone',
+//     last_name: '',
+//     platform,
+//   };
+// };
 
-const getUserInfo = async (userId: string, platform: string, name: string) => {
-  const start = Date.now();
-  functions.logger.log('Getting user info');
-  const infoCollectionRef = admin
-    .firestore()
-    .collection('users')
-    .doc(userId)
-    .collection('info');
-  const snapshot = await infoCollectionRef.limit(1).get();
-  if (snapshot.docs.length > 0) {
-    functions.logger.log('User info found');
-    const end = Date.now();
-    functions.logger.log(`getUserInfo took ${end - start} ms`);
-    return snapshot.docs[0].data();
-  } else {
-    functions.logger.log('User info not found');
-    if (platform === 'messenger') {
-      try {
-        return await getFbUserInfo(userId, platform);
-      } catch (error) {
-        functions.logger.error(
-          `Error getting user info from Facebook: ${error}`,
-        );
-      }
-    } else if (platform === 'instagram') {
-      try {
-        return await getFbUserInfo(userId, platform);
-      } catch (error) {
-        functions.logger.error(
-          `Error getting user info from Facebook: ${error}`,
-        );
-      }
-    } else if (platform === 'whatsapp') {
-      functions.logger.log('Using default info for WhatsApp');
-      storeUserInfo(userId, platform, name);
-    }
-    return {
-      psid: userId,
-      platform: platform === 'whatsapp' ? 'whatsapp' : 'unknown',
-      first_name: name || 'someone',
-    };
-  }
-};
+// const getUserInfo = async (userId: string, platform: string, name: string) => {
+//   const start = Date.now();
+//   functions.logger.log('Getting user info');
+//   const infoCollectionRef = admin
+//     .firestore()
+//     .collection('users')
+//     .doc(userId)
+//     .collection('info');
+//   const snapshot = await infoCollectionRef.limit(1).get();
+//   if (snapshot.docs.length > 0) {
+//     functions.logger.log('User info found');
+//     const end = Date.now();
+//     functions.logger.log(`getUserInfo took ${end - start} ms`);
+//     return snapshot.docs[0].data();
+//   } else {
+//     functions.logger.log('User info not found');
+//     if (platform === 'messenger') {
+//       try {
+//         return await getFbUserInfo(userId, platform);
+//       } catch (error) {
+//         functions.logger.error(
+//           `Error getting user info from Facebook: ${error}`,
+//         );
+//       }
+//     } else if (platform === 'instagram') {
+//       try {
+//         return await getFbUserInfo(userId, platform);
+//       } catch (error) {
+//         functions.logger.error(
+//           `Error getting user info from Facebook: ${error}`,
+//         );
+//       }
+//     } else if (platform === 'whatsapp') {
+//       functions.logger.log('Using default info for WhatsApp');
+//       storeUserInfo(userId, platform, name);
+//     }
+//     return {
+//       psid: userId,
+//       platform: platform === 'whatsapp' ? 'whatsapp' : 'unknown',
+//       first_name: name || 'someone',
+//     };
+//   }
+// };
 
 const getPreviousMessages = async (from: string, amount: number) => {
+  const start = Date.now();
   functions.logger.log('getting existing messages');
   const snapshot = await admin
     .firestore()
@@ -310,7 +331,15 @@ const getPreviousMessages = async (from: string, amount: number) => {
     .orderBy('creation', 'desc')
     .limit(amount) // Limit the number of messages returned
     .get();
-  return snapshot.docs.map((doc: { data: () => any }) => doc.data()).reverse();
+  const previousMessages = snapshot.docs
+    .map((doc: { data: () => any }) => doc.data())
+    .reverse();
+  functions.logger.log(
+    `Previous messages: ${JSON.stringify(previousMessages)}`,
+  );
+  const end = Date.now();
+  functions.logger.log(`getPreviousMessages took ${end - start} ms`);
+  return previousMessages;
 };
 
 const createMessageToAi = async (
@@ -318,8 +347,9 @@ const createMessageToAi = async (
   msg_body: any,
   customReminder: string,
   name: string,
-  summary: string,
+  //summary?: string,
 ) => {
+  functions.logger.log(`previous messages in this func: ${JSON.stringify(messages)}`);
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
   const cleanedName = name.replace(/( )/g, '_');
@@ -333,10 +363,10 @@ const createMessageToAi = async (
       name: msg.role === 'assistant' ? 'Tylr' : cleanedName,
     })),
     { role: 'user', content: `${msg_body}`, name: cleanedName },
-    {
+    /* {
       role: 'system',
       content: `Here is a summary of the previous conversation: ${summary}`,
-    },
+    }, */
     ...reminder,
     {
       role: 'system',
@@ -353,6 +383,7 @@ const openAiRequest = async (
   function_call?: boolean,
   ai_functions?: any[],
 ) => {
+  const start = Date.now();
   functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messages)}`);
   let completion;
   try {
@@ -390,9 +421,20 @@ const openAiRequest = async (
       );
       const result =
         completion?.data?.choices[0].message.function_call.arguments;
+      functions.logger.log(`Result: ${JSON.stringify(result)}`);
+      const end = Date.now();
+      functions.logger.log(`openAiRequest took ${end - start} ms`);
       return result;
     } else {
       functions.logger.log('Starting normal call');
+      functions.logger.debug(
+        `normal call: ${JSON.stringify({
+          model,
+          messages,
+          max_tokens,
+          temperature,
+        })}`,
+      );
       completion = await openai
         .createChatCompletion({
           model,
@@ -407,6 +449,8 @@ const openAiRequest = async (
         `Usage: ${JSON.stringify(completion?.data?.usage)}`,
       );
       functions.logger.log(completion?.data?.choices?.[0]?.message?.content);
+      const end = Date.now();
+      functions.logger.log(`openAiRequest took ${end - start} ms`);
       return completion?.data?.choices?.[0]?.message?.content;
     }
   } catch (error) {
@@ -447,8 +491,8 @@ const processMessage = async (
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
 
   // Check if user exists in firestore
-  const userInfo = await getUserInfo(userId, platform, name);
-  const summary = await getConversationSummary(userId);
+  //const userInfo = await getUserInfo(userId, platform, name);
+  //const summary = await getConversationSummary(userId);
 
   functions.logger.log('user info: ' + JSON.stringify(name));
 
@@ -497,22 +541,22 @@ const processMessage = async (
   );
 
   // Custom Reminder
-  const customReminder = `you are talking with ${userInfo.first_name} on ${platform} and the current time is ${currentTime}`;
+  const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
   functions.logger.log('customReminder: ' + customReminder);
 
   // Get conversation summary
   // const conversationSummary = await getConversationSummary(messages);
-  const bigMessageSummary = await getPreviousMessages(userId, 25);
-  const bigMessageSummaryCleaned = JSON.stringify(
-    bigMessageSummary.map((msg: { role: string; text: string }) => ({
-      name: msg.role === 'assistant' ? 'Tylr' : userInfo.first_name,
-      content: msg.text,
-    })),
-  )
-    .replace(/user/g, name)
-    .replace(/assistant/g, 'Tylr');
+  // const bigMessageSummary = await getPreviousMessages(userId, 25);
+  // const bigMessageSummaryCleaned = JSON.stringify(
+  //   bigMessageSummary.map((msg: { role: string; text: string }) => ({
+  //     name: msg.role === 'assistant' ? 'Tylr' : userInfo.first_name,
+  //     content: msg.text,
+  //   })),
+  // )
+  //   .replace(/user/g, name)
+  //   .replace(/assistant/g, 'Tylr');
 
-  storeMessageSummary(userId, bigMessageSummaryCleaned);
+  //storeMessageSummary(userId, bigMessageSummaryCleaned);
 
   // Create messages to AI
   const messagesToAi = await createMessageToAi(
@@ -520,14 +564,15 @@ const processMessage = async (
     msgBody,
     customReminder,
     name,
-    summary,
+    //summary,
   );
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
-  const response = await openAiRequest(messagesToAi, 'gpt-4', 500, 1);
+  let response = await openAiRequest(messagesToAi, 'gpt-4', 2000, 1);
   if (!response) {
-    throw new Error('Response from openAiRequest was void');
+    functions.logger.error('Response from openAiRequest was void');
+    response = 'Sorry, I am having troubles lol';
   }
 
   // Store assistant's response to Firestore
@@ -627,8 +672,10 @@ const app = async (req, res) => {
         );
         await sendMessengerMessage(userId, aiResponse);
         const endTime = new Date();
-        const timeDiff = endTime.getTime() - startTime.getTime();
-        functions.logger.log('Whole function time: ' + timeDiff);
+        logLogs(
+          `Whole function time: ${endTime.getTime() - startTime.getTime()}`,
+        );
+        functions.logger.log(logs);
         return functions.logger.debug('Finished Messenger function');
       }
       return functions.logger.log('Not a message');
