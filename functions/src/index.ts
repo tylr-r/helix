@@ -322,6 +322,7 @@ const createMessageToAi = async (
 ) => {
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
+  const cleanedName = name.replace(/( )/g, '_');
   return [
     ...system,
     ...main,
@@ -329,9 +330,9 @@ const createMessageToAi = async (
     ...messages.map((msg: { role: string; text: any }) => ({
       role: msg.role,
       content: msg.text,
-      name: msg.role === 'assistant' ? 'Tylr' : name,
+      name: msg.role === 'assistant' ? 'Tylr' : cleanedName,
     })),
-    { role: 'user', content: `${msg_body}`, name: name },
+    { role: 'user', content: `${msg_body}`, name: cleanedName },
     {
       role: 'system',
       content: `Here is a summary of the previous conversation: ${summary}`,
@@ -419,11 +420,12 @@ const extractWhatsAppMessageDetails = (req: {
 }) => {
   const request = req.body.entry[0].changes[0].value;
   const message = request.messages[0];
-  const phoneNumberId = request.metadata.phone_number_id;
+
   const userId = message.from;
-  const msgId = message.id;
   const msgBody = message.text.body;
   const name = request.contacts[0]?.profile.name;
+  const phoneNumberId = request.metadata.phone_number_id;
+  const msgId = message.id;
 
   functions.logger.log(`Whatsapp request: ${JSON.stringify(request)}`);
 
@@ -448,9 +450,9 @@ const processMessage = async (
   const userInfo = await getUserInfo(userId, platform, name);
   const summary = await getConversationSummary(userId);
 
-  functions.logger.log('user info: ' + JSON.stringify(userInfo));
+  functions.logger.log('user info: ' + JSON.stringify(name));
 
-  await storeMessage(userId, msgBody, 'user');
+  storeMessage(userId, msgBody, 'user');
   const messages = await getPreviousMessages(userId, 5);
 
   functions.logger.log('previous messages: ' + JSON.stringify(messages));
@@ -585,14 +587,13 @@ const app = async (req, res) => {
       ) {
         const { userId, msgBody, name, phoneNumberId, msgId } =
           extractWhatsAppMessageDetails(req);
+        sendWhatsAppReceipt(phoneNumberId, msgId);
         const aiResponse = await processMessage(
           userId,
           msgBody,
           platform,
           name,
         );
-        functions.logger.log('sending whatsapp message');
-        sendWhatsAppReceipt(phoneNumberId, msgId);
         await sendWhatsAppMessage(phoneNumberId, userId, aiResponse);
         return functions.logger.log('Finished WhatsApp function');
       }
