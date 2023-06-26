@@ -13,6 +13,8 @@
       align-content: center;
       justify-content: flex-start;
       align-items: center;
+      background-color: var(--background-color);
+      color: var(--text-color);
     }
 
     h1 {
@@ -28,7 +30,7 @@
     }
 
     a {
-      color: #707070;
+      color: var(--text-color);
       text-decoration: none;
     }
 
@@ -49,6 +51,32 @@
       max-width: 800px;
     }
   </style>
+  <style>
+    :root {
+      --light-bg-color: #f0f0f0;
+      --light-text-color: #707070;
+      --dark-bg-color: #1c1c1c;
+      --dark-text-color: #dcdcdc;
+    }
+
+    [data-theme='dark'] {
+      --background-color: var(--dark-bg-color);
+      --text-color: var(--dark-text-color);
+    }
+
+    body {
+      background-color: var(--background-color);
+      color: var(--text-color);
+    }
+  </style>
+
+  <script>
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  </script>
 </head>
 
 <body>
