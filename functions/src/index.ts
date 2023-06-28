@@ -18,6 +18,15 @@ const configuration = new Configuration({
   apiKey: openaitoken,
 });
 
+type System = { role: string; content: string }[];
+
+interface Primer {
+  system: System;
+  style: System;
+  details: System;
+  reminder: System;
+}
+
 const openai = new OpenAIApi(configuration);
 
 admin.initializeApp();
@@ -49,7 +58,9 @@ const facebookGraphRequest = async (
       headers: { 'Content-Type': 'application/json' },
     });
     const end = new Date();
-    logLogs(`Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`);
+    logLogs(
+      `Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`,
+    );
     return response;
   } catch (error) {
     return functions.logger.error(`${errorMsg}: ${error}`);
@@ -345,33 +356,40 @@ const getPreviousMessages = async (from: string, amount: number) => {
 const createMessageToAi = async (
   messages: any[],
   msg_body: any,
-  customReminder: string,
+  platform: string,
   name: string,
-  //summary?: string,
+  needHistoryBool?: string,
 ) => {
-  functions.logger.log(`previous messages in this func: ${JSON.stringify(messages)}`);
+  functions.logger.log(
+    `previous messages in this func: ${JSON.stringify(messages)}`,
+  );
   // Get primer json from notion
-  const { system, main, reminder } = await getPrimer();
+  const { system, style, details, reminder }: Primer = await getPrimer();
+  const history = needHistoryBool ? details : '';
+
+  const customReminder = [
+    {
+      role: 'system',
+      content: reminder[0].content
+        .replace('{platform}', platform)
+        .replace('{someone}', name)
+        .replace('{time}', currentTime),
+    },
+  ];
+
   const cleanedName = name.replace(/( )/g, '_');
   return [
     ...system,
-    ...main,
-    // Add retrieved messages:
+    ...style,
+    ...history,
+    // Add previous messages:
     ...messages.map((msg: { role: string; text: any }) => ({
       role: msg.role,
       content: msg.text,
       name: msg.role === 'assistant' ? 'Tylr' : cleanedName,
     })),
     { role: 'user', content: `${msg_body}`, name: cleanedName },
-    /* {
-      role: 'system',
-      content: `Here is a summary of the previous conversation: ${summary}`,
-    }, */
-    ...reminder,
-    {
-      role: 'system',
-      content: customReminder,
-    },
+    ...customReminder,
   ];
 };
 
@@ -535,14 +553,9 @@ const processMessage = async (
       },
     ],
   );
+  const needHistoryBool = JSON.parse(needHistory).need_history;
 
-  functions.logger.log(
-    `needHistory: ${JSON.stringify(JSON.parse(needHistory))}`,
-  );
-
-  // Custom Reminder
-  const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
-  functions.logger.log('customReminder: ' + customReminder);
+  functions.logger.log(`needHistory: ${needHistoryBool}`);
 
   // Get conversation summary
   // const conversationSummary = await getConversationSummary(messages);
@@ -562,9 +575,9 @@ const processMessage = async (
   const messagesToAi = await createMessageToAi(
     messages,
     msgBody,
-    customReminder,
+    platform,
     name,
-    //summary,
+    needHistoryBool,
   );
 
   // Send messages to OpenAI
