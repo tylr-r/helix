@@ -2,6 +2,8 @@
 <html>
 
 <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tylr</title>
   <style>
     body {
@@ -49,6 +51,15 @@
       height: auto;
     }
 
+    .dark-fill {
+      fill: var(--de-emph-color);
+    }
+
+    footer p,
+    a {
+      color: var(--de-emph-color) !important;
+    }
+
     img {
       max-width: 100%;
       height: auto;
@@ -64,7 +75,7 @@
       justify-content: center;
       align-items: center;
       flex-direction: row;
-      color: var(--text-color);
+      color: var(--de-emph-color) !important;
     }
   </style>
 
@@ -74,6 +85,7 @@
       --light-text-color: #707070;
       --dark-bg-color: #1c1c1c;
       --dark-text-color: #dcdcdc;
+      --de-emph-color: #a5a5a5;
     }
 
     [data-theme='dark'] {
@@ -102,11 +114,6 @@
     <svg version="1.1" id="tylr_logo" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
       x="0px" y="0px" viewBox="0 0 3946.52 2219.92" style="enable-background:new 0 0 3946.52 2219.92;"
       xml:space="preserve">
-      <style>
-        .dark-fill {
-          fill: var(--dark-text-color);
-        }
-      </style>
       <g>
         <path class="dark-fill" d="M1706.9,1293.35h-93.6V956.52h-136.22v-80.48h366.05v80.48H1706.9V1293.35z" />
         <path class="dark-fill" d="M1823.66,1402.95c0,0,36.87-87.53,39.26-92.55l8.94-18.78l-126.39-301.66h96.88l73.92,200.31l73.63-200.31h92.41
@@ -145,7 +152,7 @@
   </div>
 
   <footer>
-    <p style="margin-right: 8px;">© 2023 Tyler Robinson  |  
+    <p style="margin-right: 8px;">© 2023 Tylr |
       <a href="/privacy-policy.html" target="_blank">Privacy Policy</a>
     </p>
   </footer>
