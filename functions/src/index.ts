@@ -39,17 +39,20 @@ const facebookGraphRequest = async (
   endpoint: string,
   data: any,
   errorMsg: string,
+  method: string,
 ) => {
   const start = new Date();
   try {
     const response = await axios({
-      method: 'POST',
-      url: `https://graph.facebook.com/v16.0/${endpoint}?access_token=${pageAccessToken}`,
+      method,
+      url: `https://graph.facebook.com/v16.0/${endpoint}access_token=${pageAccessToken}`,
       data,
       headers: { 'Content-Type': 'application/json' },
     });
     const end = new Date();
-    logLogs(`Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`);
+    logLogs(
+      `Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`,
+    );
     return response;
   } catch (error) {
     return functions.logger.error(`${errorMsg}: ${error}`);
@@ -90,37 +93,40 @@ const getPrimer = async () => {
 
 const sendWhatsAppReceipt = async (phone_number_id: string, msgId: string) => {
   await facebookGraphRequest(
-    `${phone_number_id}/messages`,
+    `${phone_number_id}/messages?`,
     {
       messaging_product: 'whatsapp',
       status: 'read',
       message_id: msgId,
     },
     'Error while marking WhatsApp as seen',
+    'POST',
   );
 };
 
 // Send Messenger receipt
 const sendMessengerReceipt = async (userId: string, sender_action: string) => {
   await facebookGraphRequest(
-    'me/messages',
+    'me/messages?',
     {
       recipient: { id: userId },
       sender_action,
     },
     `Error while sending Messenger action: ${sender_action}`,
+    'POST',
   );
 };
 
 // Send Messenger message
 const sendMessengerMessage = async (userId: string, response: string) => {
   await facebookGraphRequest(
-    'me/messages',
+    'me/messages?',
     {
       recipient: { id: userId },
       message: { text: `${response}` },
     },
     'Error while sending Messenger message',
+    'POST',
   );
 };
 
@@ -132,13 +138,14 @@ const sendWhatsAppMessage = async (
 ) => {
   functions.logger.log('Sending WhatsApp message');
   await facebookGraphRequest(
-    `${phoneNumberId}/messages`,
+    `${phoneNumberId}/messages?`,
     {
       messaging_product: 'whatsapp',
       to: userId,
       text: { body: `${response}` },
     },
     'Error while sending WhatsApp message',
+    'POST',
   );
 };
 
@@ -229,114 +236,61 @@ const storeMessage = async (from: string, message: any, role: string) => {
 //   }
 // };
 
-// const getFbUserInfo = async (userId: string, platform: string) => {
-//   functions.logger.log(`Getting user info from Facebook for ${userId}`);
-//   await facebookGraphRequest(
-//     userId,
-//     {},
-//     `Error getting user info from Facebook for ${userId}`,
-//   )
-//     .then((response) => {
-//       functions.logger.log(
-//         `Response from FB user info: ${JSON.stringify(response?.data)}`,
-//       );
-//       let firstName: string;
-//       let lastName: string;
-//       let name: string;
-//       if (platform === 'messenger') {
-//         firstName = response?.data.first_name
-//           ? response.data.first_name
-//           : 'someone';
-//         lastName = response?.data.last_name || '';
-//         name = lastName != '' ? firstName + ' ' + lastName : firstName;
-//         if (response !== undefined) {
-//           storeUserInfo(userId, platform, name);
-//         }
-//       } else {
-//         firstName = response?.data.name ? response.data.name : 'someone';
-//         lastName = response?.data.last_name || '';
-//         name = lastName != '' ? firstName + ' ' + lastName : firstName;
-//         storeUserInfo(userId, platform, name);
-//       }
-//       return {
-//         psid: userId,
-//         first_name: firstName,
-//         last_name: lastName,
-//         platform,
-//       };
-//     })
-//     .catch((error: any) => {
-//       functions.logger.error(`Error getting user info from Facebook: ${error}`);
-//     });
-//   return {
-//     psid: userId,
-//     first_name: 'someone',
-//     last_name: '',
-//     platform,
-//   };
-// };
-
-// const getUserInfo = async (userId: string, platform: string, name: string) => {
-//   const start = Date.now();
-//   functions.logger.log('Getting user info');
-//   const infoCollectionRef = admin
-//     .firestore()
-//     .collection('users')
-//     .doc(userId)
-//     .collection('info');
-//   const snapshot = await infoCollectionRef.limit(1).get();
-//   if (snapshot.docs.length > 0) {
-//     functions.logger.log('User info found');
-//     const end = Date.now();
-//     functions.logger.log(`getUserInfo took ${end - start} ms`);
-//     return snapshot.docs[0].data();
-//   } else {
-//     functions.logger.log('User info not found');
-//     if (platform === 'messenger') {
-//       try {
-//         return await getFbUserInfo(userId, platform);
-//       } catch (error) {
-//         functions.logger.error(
-//           `Error getting user info from Facebook: ${error}`,
-//         );
-//       }
-//     } else if (platform === 'instagram') {
-//       try {
-//         return await getFbUserInfo(userId, platform);
-//       } catch (error) {
-//         functions.logger.error(
-//           `Error getting user info from Facebook: ${error}`,
-//         );
-//       }
-//     } else if (platform === 'whatsapp') {
-//       functions.logger.log('Using default info for WhatsApp');
-//       storeUserInfo(userId, platform, name);
-//     }
-//     return {
-//       psid: userId,
-//       platform: platform === 'whatsapp' ? 'whatsapp' : 'unknown',
-//       first_name: name || 'someone',
-//     };
-//   }
-// };
-
-const getPreviousMessages = async (from: string, amount: number) => {
+const getPreviousMessages = async (
+  from: string,
+  amount: number,
+  platform: string,
+) => {
   const start = Date.now();
   functions.logger.log('getting existing messages');
-  const snapshot = await admin
-    .firestore()
-    .collection('users')
-    .doc(from)
-    .collection('conversation')
-    .orderBy('creation', 'desc')
-    .limit(amount) // Limit the number of messages returned
-    .get();
-  const previousMessages = snapshot.docs
-    .map((doc: { data: () => any }) => doc.data())
-    .reverse();
-  functions.logger.log(
-    `Previous messages: ${JSON.stringify(previousMessages)}`,
-  );
+  let previousMessages: any;
+  if (platform === 'messenger') {
+    functions.logger.log('getting fb messages');
+    const fbMessages = await facebookGraphRequest(
+      `me/conversations?fields=messages.limit(${amount}){created_time,from,message}&user_id=${from}&`,
+      {},
+      'Error while getting Messenger messages',
+      'GET',
+    );
+    functions.logger.log(`fb messages: ${JSON.stringify(fbMessages?.data)}`);
+    const fbMessageHistory = fbMessages?.data.data[0].messages.data;
+    previousMessages = fbMessageHistory
+      .map(
+        (item: {
+          from: { name: string; id: string };
+          message: string;
+          created_time: string;
+        }) => {
+          return {
+            role: item.from.id === '278067462233855' ? 'assistant' : 'user',
+            name: item.from.name,
+            text: item.message,
+            creation: item.created_time,
+          };
+        },
+      )
+      .reverse();
+    previousMessages = previousMessages.slice(0, previousMessages.length - 1);
+    functions.logger.log(
+      `fb messages converted: ${JSON.stringify(previousMessages)}`,
+    );
+  } else {
+    functions.logger.log('getting firestore messages');
+    const snapshot = await admin
+      .firestore()
+      .collection('users')
+      .doc(from)
+      .collection('conversation')
+      .orderBy('creation', 'desc')
+      .limit(amount) // Limit the number of messages returned
+      .get();
+    previousMessages = snapshot.docs
+      .map((doc: { data: () => any }) => doc.data())
+      .reverse();
+    functions.logger.log(
+      `Previous messages: ${JSON.stringify(previousMessages)}`,
+    );
+  }
   const end = Date.now();
   functions.logger.log(`getPreviousMessages took ${end - start} ms`);
   return previousMessages;
@@ -349,7 +303,9 @@ const createMessageToAi = async (
   name: string,
   //summary?: string,
 ) => {
-  functions.logger.log(`previous messages in this func: ${JSON.stringify(messages)}`);
+  functions.logger.log(
+    `previous messages in this func: ${JSON.stringify(messages)}`,
+  );
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
   const cleanedName = name.replace(/( )/g, '_');
@@ -496,49 +452,10 @@ const processMessage = async (
 
   functions.logger.log('user info: ' + JSON.stringify(name));
 
-  storeMessage(userId, msgBody, 'user');
-  const messages = await getPreviousMessages(userId, 5);
+  // storeMessage(userId, msgBody, 'user');
+  const messages = await getPreviousMessages(userId, 15, platform);
 
   functions.logger.log('previous messages: ' + JSON.stringify(messages));
-
-  // Check to see if AI needs to know it's own history
-  const needHistory = await openAiRequest(
-    [
-      {
-        role: 'system',
-        content: 'You are Tylr, a real human.',
-      },
-      {
-        role: 'user',
-        content: `Does a response to the following message benefit if you know your personal experiences or stored memories: "${msgBody}"?`,
-      },
-    ],
-    'gpt-3.5-turbo-0613',
-    600,
-    0.5,
-    true,
-    [
-      {
-        name: 'history_need',
-        description:
-          "Determine if the Tylr's history or background information is necessary to formulate a substantial response to the user's message.",
-        parameters: {
-          type: 'object',
-          properties: {
-            need_history: {
-              type: 'boolean',
-              description: 'a true or false',
-            },
-          },
-          required: ['need_history'],
-        },
-      },
-    ],
-  );
-
-  functions.logger.log(
-    `needHistory: ${JSON.stringify(JSON.parse(needHistory))}`,
-  );
 
   // Custom Reminder
   const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
