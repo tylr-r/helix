@@ -446,19 +446,17 @@ const processMessage = async (
 ) => {
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
 
-  // Check if user exists in firestore
-  //const userInfo = await getUserInfo(userId, platform, name);
-  //const summary = await getConversationSummary(userId);
-
   functions.logger.log('user info: ' + JSON.stringify(name));
 
-  // storeMessage(userId, msgBody, 'user');
+  storeMessage(userId, msgBody, 'user');
   const messages = await getPreviousMessages(userId, 15, platform);
 
   functions.logger.log('previous messages: ' + JSON.stringify(messages));
 
+  const updatedName = platform === 'messenger' ? messages[0].name : name;
+  functions.logger.log('updated name: ' + updatedName);
   // Custom Reminder
-  const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
+  const customReminder = `you are talking with ${updatedName} on ${platform} and the current time is ${currentTime}`;
   functions.logger.log('customReminder: ' + customReminder);
 
   // Get conversation summary
@@ -480,7 +478,7 @@ const processMessage = async (
     messages,
     msgBody,
     customReminder,
-    name,
+    updatedName,
     //summary,
   );
 
