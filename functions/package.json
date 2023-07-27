@@ -15,7 +15,6 @@
   },
   "main": "lib/index.js",
   "dependencies": {
-    "@google-ai/generativelanguage": "^0.2.0",
     "axios": "^1.4.0",
     "dotenv": "^6.2.0",
     "firebase-admin": "^11.5.0",
