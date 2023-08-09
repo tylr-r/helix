@@ -176,75 +176,6 @@ const storeMessage = async (from: string, message: any, role: string) => {
   }
 };
 
-// Store message summary
-// const storeMessageSummary = async (userId: string, message: string) => {
-//   functions.logger.log('Storing message summary with PaLM');
-//   try {
-//     await admin
-//       .firestore()
-//       .collection('users')
-//       .doc(userId)
-//       .collection('summaries')
-//       .add({
-//         text: message,
-//         userId,
-//         creation: admin.firestore.FieldValue.serverTimestamp(),
-//       });
-//   } catch (error) {
-//     functions.logger.error(`Error storing message summary: ${error}`);
-//   }
-// };
-
-// Get Message Summary
-// const getConversationSummary = async (userId: string) => {
-//   functions.logger.log('Getting message summary');
-//   const start = new Date();
-//   try {
-//     const snapshot = await admin
-//       .firestore()
-//       .collection('users')
-//       .doc(userId)
-//       .collection('summaries')
-//       .orderBy('creation', 'asc')
-//       .limit(1)
-//       .get();
-//     functions.logger.log(`Conversation summary: ${snapshot}`);
-//     /* const cleanedString = JSON.stringify(
-//     JSON.parse(snapshot.docs[0].data().text),
-//   );
-//   functions.logger.log(`Conversation summary: ${cleanedString}`); */
-//     const end = new Date();
-//     logLogs(`Time to get summary: ${end.getTime() - start.getTime()}ms`);
-//     return snapshot.docs[0].data().text;
-//   } catch (error) {
-//     functions.logger.error(`Error getting message summary: ${error}`);
-//     return '';
-//   }
-// };
-
-// Store user info
-// const storeUserInfo = async (
-//   userId: string,
-//   platform: string,
-//   name: string,
-// ) => {
-//   functions.logger.debug('Storing user info for' + name);
-//   try {
-//     await admin
-//       .firestore()
-//       .collection('users')
-//       .doc(userId)
-//       .collection('info')
-//       .add({
-//         userId,
-//         platform,
-//         name,
-//       });
-//   } catch (error) {
-//     functions.logger.error(`Error storing message: ${error}`);
-//   }
-// };
-
 const getPreviousMessages = async (
   from: string,
   amount: number,
@@ -467,20 +398,6 @@ const processMessage = async (
   // Custom Reminder
   const customReminder = `you are talking with ${updatedName} on ${platform} and the current time is ${currentTime}`;
   functions.logger.log('customReminder: ' + customReminder);
-
-  // Get conversation summary
-  // const conversationSummary = await getConversationSummary(messages);
-  // const bigMessageSummary = await getPreviousMessages(userId, 25);
-  // const bigMessageSummaryCleaned = JSON.stringify(
-  //   bigMessageSummary.map((msg: { role: string; text: string }) => ({
-  //     name: msg.role === 'assistant' ? 'Tylr' : userInfo.first_name,
-  //     content: msg.text,
-  //   })),
-  // )
-  //   .replace(/user/g, name)
-  //   .replace(/assistant/g, 'Tylr');
-
-  //storeMessageSummary(userId, bigMessageSummaryCleaned);
 
   // Create messages to AI
   const messagesToAi = await createMessageToAi(
