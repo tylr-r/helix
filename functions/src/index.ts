@@ -54,8 +54,17 @@ const facebookGraphRequest = async (
       `Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`,
     );
     return response;
-  } catch (error) {
-    return functions.logger.error(`${errorMsg}: ${error}`);
+  } catch (error: any) {
+    if (error.response && error.response.data) {
+      const detailedErrorMsg = JSON.stringify(error.response.data);
+      return functions.logger.error(`${errorMsg}: ${detailedErrorMsg}`);
+    } else if (error.request) {
+      // The request was made but no response was received
+      return functions.logger.error(`${errorMsg}: No response received.`);
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      return functions.logger.error(`${errorMsg}: ${error.message}`);
+    }
   }
 };
 
