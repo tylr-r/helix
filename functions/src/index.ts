@@ -575,9 +575,11 @@ const app = async (req, res) => {
           return functions.logger.log('Not a message');
         }
 
-        // Mark message as seen
-        await sendMessengerReceipt(userId, 'mark_seen');
-        sendMessengerReceipt(userId, 'typing_on');
+        // Mark message as seen if Messenger
+        if (platform === 'messenger') {
+          await sendMessengerReceipt(userId, 'mark_seen');
+          sendMessengerReceipt(userId, 'typing_on');
+        }
 
         const aiResponse = await processMessage(
           userId,
