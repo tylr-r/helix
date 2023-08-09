@@ -570,8 +570,9 @@ const app = async (req, res) => {
       if (entry.messaging) {
         const userId = entry.messaging[0].sender.id;
         const msgBody = entry.messaging[0].message.text;
+        const isEcho = entry.messaging[0].message.is_echo;
 
-        if (!msgBody) {
+        if (!msgBody || isEcho) {
           return functions.logger.log('Not a message');
         }
 
