@@ -11,6 +11,8 @@ const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
+const messengerId = process.env.MESSENGER_ID;
+const instagramId = process.env.INSTAGRAM_ID;
 
 import { Configuration, OpenAIApi } from 'openai';
 const configuration = new Configuration({
@@ -127,14 +129,19 @@ const sendMessengerReceipt = async (userId: string, sender_action: string) => {
 };
 
 // Send Messenger message
-const sendMessengerMessage = async (userId: string, response: string) => {
+const sendMessengerMessage = async (
+  userId: string,
+  response: string,
+  platform: string,
+) => {
+  functions.logger.log(`Sending ${platform} message to ${userId}`);
   await facebookGraphRequest(
     'me/messages?',
     {
       recipient: { id: userId },
       message: { text: `${response}` },
     },
-    'Error while sending Messenger message',
+    `Error while sending ${platform} message`,
     'POST',
   );
 };
@@ -202,7 +209,7 @@ const getPreviousMessages = async (
           created_time: string;
         }) => {
           return {
-            role: item.from.id === '278067462233855' ? 'assistant' : 'user',
+            role: item.from.id === messengerId ? 'assistant' : 'user',
             name: item.from.name,
             text: item.message,
             creation: item.created_time,
@@ -213,6 +220,36 @@ const getPreviousMessages = async (
     previousMessages = previousMessages.slice(0, previousMessages.length - 1);
     functions.logger.log(
       `fb messages converted: ${JSON.stringify(previousMessages)}`,
+    );
+  } else if (platform === 'instagram') {
+    functions.logger.log('getting ig messages');
+    const igMessages = await facebookGraphRequest(
+      `me/conversations?fields=messages.limit(${amount}){created_time,from,message}&user_id=${from}&platform=instagram&`,
+      {},
+      'Error while getting Instagram messages',
+      'GET',
+    );
+    functions.logger.log(`ig messages: ${JSON.stringify(igMessages?.data)}`);
+    const igMessageHistory = igMessages?.data.data[0].messages.data;
+    previousMessages = igMessageHistory
+      .map(
+        (item: {
+          from: { name: string; id: string };
+          message: string;
+          created_time: string;
+        }) => {
+          return {
+            role: item.from.id === instagramId ? 'assistant' : 'user',
+            name: item.from.name,
+            text: item.message,
+            creation: item.created_time,
+          };
+        },
+      )
+      .reverse();
+    previousMessages = previousMessages.slice(0, previousMessages.length - 1);
+    functions.logger.log(
+      `ig messages converted: ${JSON.stringify(previousMessages)}`,
     );
   } else {
     functions.logger.log('getting firestore messages');
@@ -388,7 +425,10 @@ const processMessage = async (
 
   functions.logger.log('user info: ' + JSON.stringify(name));
 
-  storeMessage(userId, msgBody, 'user');
+  // Store message if WhatsApp
+  if (platform === 'whatsapp') {
+    storeMessage(userId, msgBody, 'user');
+  }
   const messages = await getPreviousMessages(userId, 15, platform);
 
   functions.logger.log('previous messages: ' + JSON.stringify(messages));
@@ -416,8 +456,10 @@ const processMessage = async (
     response = 'Sorry, I am having troubles lol';
   }
 
-  // Store assistant's response to Firestore
-  storeMessage(userId, response, 'assistant');
+  // Store assistant's response to Firestore if WhatsApp
+  if (platform === 'whatsapp') {
+    storeMessage(userId, response, 'assistant');
+  }
   return response;
 };
 
@@ -486,7 +528,7 @@ const app = async (req, res) => {
       return functions.logger.log('Not a status change or message');
     }
 
-    // Messenger
+    // Messenger or Instagram
     if (platform === 'page' || platform === 'instagram') {
       functions.logger.log('Processing page request');
       if (platform === 'page') {
@@ -514,7 +556,7 @@ const app = async (req, res) => {
           platform,
           'someone',
         );
-        await sendMessengerMessage(userId, aiResponse);
+        await sendMessengerMessage(userId, aiResponse, platform);
         const endTime = new Date();
         logLogs(
           `Whole function time: ${endTime.getTime() - startTime.getTime()}`,
