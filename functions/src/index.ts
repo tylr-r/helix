@@ -463,6 +463,42 @@ const processMessage = async (
   return response;
 };
 
+const checkIfNeedAgent = async (message: string, userId, platform) => {
+  const agentPhrases = [
+    'agent',
+    'real person',
+    'human',
+    'help',
+    'support',
+    'talk to someone',
+    'talk to a person',
+    'talk to a human',
+    'talk to a real person',
+    'talk to a real human',
+  ];
+  let needAgent = agentPhrases.some((phrases) => message.includes(phrases));
+  functions.logger.log(`Need an agent from this message: ${needAgent}`);
+  if (needAgent === true) {
+    await sendMessengerMessage(
+      userId,
+      'I am connecting you with a real agent. Tyler will be with you within 24 hours.',
+      platform,
+    );
+  } else {
+    const recentMessages = await getPreviousMessages(userId, 5, platform);
+    if (recentMessages) {
+      const recentMessagesString = JSON.stringify(recentMessages);
+      if (
+        recentMessagesString.includes('I am connecting you with a real agent')
+      ) {
+        needAgent = true;
+        functions.logger.log(`Recently requested agent`);
+      }
+    }
+  }
+  return needAgent;
+};
+
 const app = async (req, res) => {
   const startTime = new Date();
   functions.logger.log('running app function!');
@@ -542,6 +578,12 @@ const app = async (req, res) => {
 
         if (!msgBody || isEcho) {
           return functions.logger.log('Not a message');
+        }
+
+        // Check if message is looking for an agent
+        const needAgent = await checkIfNeedAgent(msgBody, userId, platform);
+        if (needAgent) {
+          return functions.logger.log('Agent needed');
         }
 
         // Mark message as seen if Messenger
