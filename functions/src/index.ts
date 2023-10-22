@@ -476,7 +476,10 @@ const checkIfNeedAgent = async (message: string, userId, platform) => {
     'talk to a real person',
     'talk to a real human',
   ];
-  let needAgent = agentPhrases.some((phrases) => message.includes(phrases));
+  // get an agent if the message contains any of the agent phrases and is on instagram
+  let needAgent =
+    agentPhrases.some((phrases) => message.includes(phrases)) &&
+    platform === 'instagram';
   functions.logger.log(`Need an agent from this message: ${needAgent}`);
   if (needAgent === true) {
     await sendMessengerMessage(
