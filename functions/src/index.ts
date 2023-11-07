@@ -450,7 +450,12 @@ const processMessage = async (
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
-  let response = await openAiRequest(messagesToAi, 'gpt-4', 2000, 1);
+  let response = await openAiRequest(
+    messagesToAi,
+    'gpt-4-1106-preview',
+    2000,
+    1,
+  );
   if (!response) {
     functions.logger.error('Response from openAiRequest was void');
     response = 'Sorry, I am having troubles lol';
