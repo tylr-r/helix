@@ -278,7 +278,7 @@ const createMessageToAi = async (
   msg_body: any,
   customReminder: string,
   name: string,
-  //summary?: string,
+  imageInterpretation: any,
 ) => {
   functions.logger.log(
     `previous messages in this func: ${JSON.stringify(messages)}`,
@@ -286,20 +286,22 @@ const createMessageToAi = async (
   // Get primer json from notion
   const { system, main, reminder } = await getPrimer();
   const cleanedName = name.replace(/( )/g, '_');
+  const latestMessage = imageInterpretation
+    ? `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`
+    : msg_body;
+
+  const previous = messages.map((msg: { role: string; text: any }) => ({
+    role: msg.role,
+    content: msg.text,
+    name: msg.role === 'assistant' ? 'Tylr' : cleanedName,
+  }));
+
   return [
     ...system,
     ...main,
     // Add retrieved messages:
-    ...messages.map((msg: { role: string; text: any }) => ({
-      role: msg.role,
-      content: msg.text,
-      name: msg.role === 'assistant' ? 'Tylr' : cleanedName,
-    })),
-    { role: 'user', content: `${msg_body}`, name: cleanedName },
-    /* {
-      role: 'system',
-      content: `Here is a summary of the previous conversation: ${summary}`,
-    }, */
+    ...previous,
+    { role: 'user', content: `${latestMessage}`, name: cleanedName },
     ...reminder,
     {
       role: 'system',
@@ -419,6 +421,7 @@ const processMessage = async (
   userId: string,
   msgBody: string,
   platform: string,
+  attachment: any,
   name: string,
 ) => {
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
@@ -439,14 +442,39 @@ const processMessage = async (
   const customReminder = `you are talking with ${updatedName} on ${platform} and the current time is ${currentTime}`;
   functions.logger.log('customReminder: ' + customReminder);
 
+  let imageInterpretation;
+  // Create messages to AI
+  if (attachment) {
+    const imageMessage = [
+      {
+        type: 'text',
+        text: ' Describe the contents of the image thoroughly, focusing on the setting, objects, people (noting their actions, expressions, and emotions), colors, and atmosphere. Pay special attention to the context and any text included in the image. Then, if it is a meme, explain the humor by noting cultural references and the contrast that makes it funny.',
+      },
+      {
+        type: 'image_url',
+        image_url: attachment ? attachment[0]?.payload?.url : '',
+      },
+    ];
+    imageInterpretation = await openAiRequest(
+      [{ role: 'user', content: imageMessage, name: 'someone' }],
+      'gpt-4-vision-preview',
+      2000,
+      1,
+    );
+  }
+
   // Create messages to AI
   const messagesToAi = await createMessageToAi(
     messages,
     msgBody,
     customReminder,
     updatedName,
-    //summary,
+    imageInterpretation,
   );
+
+  const type = attachment ? 'gpt-4-vision-preview' : 'gpt-4-1106-preview';
+
+  logLogs(`${attachment}, ${type}`);
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
@@ -564,6 +592,7 @@ const app = async (req, res) => {
           userId,
           msgBody,
           platform,
+          null,
           name,
         );
         await sendWhatsAppMessage(phoneNumberId, userId, aiResponse);
@@ -581,12 +610,17 @@ const app = async (req, res) => {
       const entry = req.body.entry[0];
       if (entry.messaging) {
         const userId = entry.messaging[0].sender.id;
-        const msgBody = entry.messaging[0].message.text;
-        const isEcho = entry.messaging[0].message.is_echo;
+        const msgBody = entry.messaging[0].message.text ?? '';
+        const attachment = entry.messaging[0]?.message?.attachments ?? null;
+        //const attachmentType = attachment[0]?.type;
+        //const attachmentPayload = attachment[0]?.payload.url;
+        //const isEcho = entry.messaging[0].message.is_echo;
 
-        if (!msgBody || isEcho) {
+        logLogs(`Attachment: ${attachment}`);
+
+        /* if (!msgBody || isEcho || attachmentType !== 'image') {
           return functions.logger.log('Not a message');
-        }
+        } */
 
         // Check if message is looking for an agent
         const needAgent = await checkIfNeedAgent(msgBody, userId, platform);
@@ -604,6 +638,7 @@ const app = async (req, res) => {
           userId,
           msgBody,
           platform,
+          attachment,
           'someone',
         );
         await sendMessengerMessage(userId, aiResponse, platform);
