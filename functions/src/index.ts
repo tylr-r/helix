@@ -2,10 +2,9 @@
 import * as functions from 'firebase-functions';
 import { onRequest } from 'firebase-functions/v2/https';
 import axios from 'axios';
-import { config } from 'dotenv';
 import admin from 'firebase-admin';
 
-const openaitoken = process.env.OPENAI_TOKEN;
+const openaitoken = process.env.OPENAI_API_KEY ?? '';
 const openAiOrgId = process.env.OPENAI_ORG_ID;
 const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
@@ -14,17 +13,15 @@ const notionBlockId = process.env.NOTION_BLOCK_ID;
 const messengerId = process.env.MESSENGER_ID;
 const instagramId = process.env.INSTAGRAM_ID;
 
-import { Configuration, OpenAIApi } from 'openai';
-const configuration = new Configuration({
+import OpenAI from 'openai';
+const configuration = {
   organization: openAiOrgId,
   apiKey: openaitoken,
-});
+};
 
-const openai = new OpenAIApi(configuration);
+const openai = new OpenAI(configuration);
 
 admin.initializeApp();
-
-config();
 
 // aggregate logs together
 const logs: string[] = [];
@@ -337,8 +334,8 @@ const openAiRequest = async (
           functions: ai_functions,
         })}`,
       );
-      completion = await openai
-        .createChatCompletion({
+      completion = await openai.chat.completions
+        .create({
           model: 'gpt-3.5-turbo-0613',
           messages,
           max_tokens,
@@ -351,11 +348,8 @@ const openAiRequest = async (
         .catch((error) => {
           functions.logger.error(`Error sending to OpenAI: ${error}`);
         });
-      functions.logger.info(
-        `Usage: ${JSON.stringify(completion?.data?.usage)}`,
-      );
-      const result =
-        completion?.data?.choices[0].message.function_call.arguments;
+      functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
+      const result = completion?.choices[0].message.function_call.arguments;
       functions.logger.log(`Result: ${JSON.stringify(result)}`);
       const end = Date.now();
       functions.logger.log(`openAiRequest took ${end - start} ms`);
@@ -370,8 +364,8 @@ const openAiRequest = async (
           temperature,
         })}`,
       );
-      completion = await openai
-        .createChatCompletion({
+      completion = await openai.chat.completions
+        .create({
           model,
           messages,
           max_tokens,
@@ -380,13 +374,11 @@ const openAiRequest = async (
         .catch((error) => {
           functions.logger.error(`Error sending to OpenAI: ${error}`);
         });
-      functions.logger.info(
-        `Usage: ${JSON.stringify(completion?.data?.usage)}`,
-      );
-      functions.logger.log(completion?.data?.choices?.[0]?.message?.content);
+      functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
+      functions.logger.log(completion?.choices?.[0]?.message?.content);
       const end = Date.now();
       functions.logger.log(`openAiRequest took ${end - start} ms`);
-      return completion?.data?.choices?.[0]?.message?.content;
+      return completion?.choices?.[0]?.message?.content;
     }
   } catch (error) {
     functions.logger.error(`Error sending to OpenAI: ${error}`);
