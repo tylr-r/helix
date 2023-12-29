@@ -12,6 +12,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 const messengerId = process.env.MESSENGER_ID;
 const instagramId = process.env.INSTAGRAM_ID;
+const assistantId = process.env.ASSISTANT_ID;
 
 import OpenAI from 'openai';
 const configuration = {
@@ -208,12 +209,12 @@ const getThreadId = async (from: string, message: string) => {
       logTime(start, 'getThreadId');
       return thread.id;
     }
-    const threadID = userInfoSnapshot.thread?.id;
+    const threadId = userInfoSnapshot.thread?.id;
     functions.logger.debug(
-      `Thread id from Firestore: ${JSON.stringify(threadID)}`,
+      `Thread id from Firestore: ${JSON.stringify(threadId)}`,
     );
     logTime(start, 'getThreadId');
-    return threadID;
+    return threadId;
   } catch (error) {
     functions.logger.error(`Error getting thread id: ${error}`);
     logTime(start, 'getThreadId');
@@ -474,6 +475,7 @@ const processMessage = async (
   platform: string,
   attachment: any,
   name: string,
+  thread?: string,
 ) => {
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
 
@@ -523,9 +525,9 @@ const processMessage = async (
     imageInterpretation,
   );
 
-  const type = attachment ? 'gpt-4-vision-preview' : 'gpt-4-1106-preview';
+  const model = attachment ? 'gpt-4-vision-preview' : 'gpt-4-1106-preview';
 
-  logLogs(`${attachment}, ${type}`);
+  logLogs(`${attachment}, ${model}`);
 
   // Send messages to OpenAI
   functions.logger.log('trying openai request');
@@ -544,6 +546,49 @@ const processMessage = async (
   if (platform === 'whatsapp') {
     storeMessage(userId, response, 'assistant');
   }
+
+  // Create threads run
+  if (thread) {
+    // Get primer json from notion
+    const { system, reminder } = await getPrimer();
+    const instructions = `${JSON.stringify(system)} ${JSON.stringify(
+      reminder,
+    )} ${customReminder}`;
+    logLogs(`Creating thread message with id ${thread}`);
+    await openai.beta.threads.messages.create(thread, {
+      role: 'user',
+      content: msgBody,
+    });
+    const run = await openai.beta.threads.runs.create(thread, {
+      assistant_id: assistantId ?? '',
+      model,
+      instructions,
+    });
+    logLogs(`Creating thread run with id ${thread}`);
+    let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
+    while (runStatus.status !== 'completed') {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
+      if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
+        logLogs(`Run status is '${runStatus.status}'. Exiting.`);
+        break;
+      }
+    }
+    logLogs(`Run completed`);
+    const messages = await openai.beta.threads.messages.list(thread);
+    logLogs(`Messages: ${JSON.stringify(messages)}`);
+    const lastMessage = messages.data
+      .filter(
+        (message) => message.run_id === run.id && message.role === 'assistant',
+      )
+      .pop()?.content[0];
+    logLogs(`Last message: ${JSON.stringify(lastMessage)}`);
+    if (lastMessage?.type === 'text')
+      response = lastMessage?.text.value ?? 'Sorry, I am having troubles lol';
+  } else {
+    logLogs('No thread id');
+  }
+
   return response;
 };
 
@@ -695,6 +740,7 @@ const app = async (req, res) => {
           platform,
           attachment,
           'someone',
+          thread,
         );
         await sendMessengerMessage(userId, aiResponse, platform);
         const endTime = new Date();
