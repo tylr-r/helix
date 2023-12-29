@@ -22,12 +22,18 @@ const configuration = {
 const openai = new OpenAI(configuration);
 
 admin.initializeApp();
+const database = admin.database();
 
 // aggregate logs together
 const logs: string[] = [];
 const logLogs = (log: string) => {
   functions.logger.log(log);
   logs.push(log);
+};
+
+const logTime = async (start: number, label: any) => {
+  const end = Date.now();
+  logLogs(`Time to ${label}: ${end - start}ms`);
 };
 
 const currentTime = new Date().toLocaleString('en-US', {
@@ -160,6 +166,59 @@ const sendWhatsAppMessage = async (
     'Error while sending WhatsApp message',
     'POST',
   );
+};
+
+const storeThreadId = async (from: string, thread: any) => {
+  functions.logger.log('Storing openAi thread id with in Database');
+  const { id, metadata, created_at, object } = thread;
+  try {
+    database.ref(`users/${from}/thread`).set({
+      id,
+      metadata,
+      created_at,
+      object,
+    });
+  } catch (error) {
+    functions.logger.error(`Error storing thread id: ${error}`);
+  }
+};
+
+const getThreadId = async (from: string, message: string) => {
+  const start = Date.now();
+  functions.logger.debug('getting thread id from firestore');
+  // check if thread id exists
+  try {
+    const userRef = database.ref(`users/${from}`);
+    const userSnapshot = await userRef.once('value');
+    const userInfoSnapshot = userSnapshot.val();
+
+    if (!userInfoSnapshot) {
+      const thread = await openai.beta.threads.create({
+        messages: [
+          {
+            role: 'user',
+            content: message,
+          },
+        ],
+        metadata: {
+          userId: from,
+        },
+      });
+      storeThreadId(from, thread);
+      logTime(start, 'getThreadId');
+      return thread.id;
+    }
+    const threadID = userInfoSnapshot.thread?.id;
+    functions.logger.debug(
+      `Thread id from Firestore: ${JSON.stringify(threadID)}`,
+    );
+    logTime(start, 'getThreadId');
+    return threadID;
+  } catch (error) {
+    functions.logger.error(`Error getting thread id: ${error}`);
+    logTime(start, 'getThreadId');
+    return;
+  }
 };
 
 const storeMessage = async (from: string, message: any, role: string) => {
@@ -613,6 +672,10 @@ const app = async (req, res) => {
         /* if (!msgBody || isEcho || attachmentType !== 'image') {
           return functions.logger.log('Not a message');
         } */
+
+        // Get user thread
+        const thread = await getThreadId(userId, msgBody);
+        functions.logger.log(`Thread: ${thread}`);
 
         // Check if message is looking for an agent
         const needAgent = await checkIfNeedAgent(msgBody, userId, platform);
