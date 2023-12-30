@@ -45,7 +45,7 @@ const facebookGraphRequest = async (
   errorMsg: string,
   method: string,
 ) => {
-  const start = new Date();
+  const start = Date.now();
   try {
     const response = await axios({
       method,
@@ -53,10 +53,7 @@ const facebookGraphRequest = async (
       data,
       headers: { 'Content-Type': 'application/json' },
     });
-    const end = new Date();
-    logLogs(
-      `Time to send FB Graph Request: ${end.getTime() - start.getTime()}ms`,
-    );
+    logTime(start, 'sendFBGraphRequest');
     return response;
   } catch (error: any) {
     if (error.response && error.response.data) {
@@ -73,7 +70,7 @@ const facebookGraphRequest = async (
 };
 
 const getPrimer = async () => {
-  const start = new Date();
+  const start = Date.now();
   try {
     const response = await axios({
       method: 'get',
@@ -84,21 +81,17 @@ const getPrimer = async () => {
         Authorization: `Bearer ${notionToken}`,
       },
     });
-
     const primerText = response.data.code.rich_text[0].plain_text;
-    functions.logger.log('Primer text: ' + primerText);
-
-    let obj;
     try {
-      obj = JSON.parse(primerText);
+      const parsedPrimer = JSON.parse(primerText);
+      functions.logger.log(
+        'Parsed primer text: ' + JSON.stringify(parsedPrimer),
+      );
+      logTime(start, 'getPrimer');
+      return parsedPrimer;
     } catch (error) {
       functions.logger.error(`Error parsing primer text: ${error}`);
     }
-
-    functions.logger.log('Parsed primer text: ' + JSON.stringify(obj));
-    const end = new Date();
-    logLogs(`Time to get primer: ${end.getTime() - start.getTime()}ms`);
-    return obj;
   } catch (error) {
     functions.logger.error(`Error getting primer: ${error}`);
   }
@@ -249,7 +242,6 @@ const openAiRequest = async (
   ai_functions?: any[],
 ) => {
   const start = Date.now();
-  functions.logger.log(`Sending to OpenAI: ${JSON.stringify(messages)}`);
   let completion;
   try {
     if (function_call && ai_functions !== undefined) {
@@ -283,9 +275,7 @@ const openAiRequest = async (
         });
       functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
       const result = completion?.choices[0].message.function_call.arguments;
-      functions.logger.log(`Result: ${JSON.stringify(result)}`);
-      const end = Date.now();
-      functions.logger.log(`openAiRequest took ${end - start} ms`);
+      logTime(start, 'openAiRequest');
       return result;
     } else {
       functions.logger.log('Starting normal call');
@@ -307,10 +297,7 @@ const openAiRequest = async (
         .catch((error) => {
           functions.logger.error(`Error sending to OpenAI: ${error}`);
         });
-      functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
-      functions.logger.log(completion?.choices?.[0]?.message?.content);
-      const end = Date.now();
-      functions.logger.log(`openAiRequest took ${end - start} ms`);
+      logTime(start, 'openAiRequest');
       return completion?.choices?.[0]?.message?.content;
     }
   } catch (error) {
@@ -381,10 +368,6 @@ const processMessage = async (
     );
   }
 
-  const model = 'gpt-4-1106-preview';
-
-  logLogs(`${attachment}, ${model}`);
-
   const userMessage = attachment
     ? `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`
     : msgBody;
@@ -395,16 +378,14 @@ const processMessage = async (
     reminder,
   )} ${customReminder}`;
 
-  logLogs(`Creating thread message with id ${thread}`);
   await openai.beta.threads.messages.create(thread, {
     role: 'user',
     content: userMessage,
   });
 
-  logLogs(`Creating thread run with id ${thread}`);
   const run = await openai.beta.threads.runs.create(thread, {
     assistant_id: assistantId ?? '',
-    model,
+    model: 'gpt-4-1106-preview',
     instructions,
   });
   let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
@@ -412,19 +393,16 @@ const processMessage = async (
     await new Promise((resolve) => setTimeout(resolve, 2000));
     runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
     if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
-      logLogs(`Run status is '${runStatus.status}'. Exiting.`);
+      functions.logger.error(`Run status is '${runStatus.status}'. Exiting.`);
       break;
     }
   }
-  logLogs(`Run completed`);
   const messages = await openai.beta.threads.messages.list(thread);
-  logLogs(`Messages: ${JSON.stringify(messages)}`);
   const lastMessage = messages.data
     .filter(
       (message) => message.run_id === run.id && message.role === 'assistant',
     )
     .pop()?.content[0];
-  logLogs(`Last message: ${JSON.stringify(lastMessage)}`);
   if (lastMessage?.type === 'text') {
     response = lastMessage?.text.value;
   }
@@ -472,7 +450,7 @@ const checkIfNeedAgent = async (message: string, userId, platform) => {
 };
 
 const app = async (req, res) => {
-  const startTime = new Date();
+  const startTime = Date.now();
   functions.logger.log('running app function!');
 
   functions.logger.info(JSON.stringify(req.body));
@@ -553,11 +531,9 @@ const app = async (req, res) => {
         const msgBody = entry.messaging[0].message.text ?? '';
         const attachment = entry.messaging[0]?.message?.attachments ?? null;
 
-        logLogs(`Attachment: ${attachment}`);
-
         // Mark message as seen if Messenger
         if (platform === 'messenger') {
-          sendMessengerReceipt(userId, 'mark_seen');
+          await sendMessengerReceipt(userId, 'mark_seen');
           sendMessengerReceipt(userId, 'typing_on');
         }
 
@@ -581,10 +557,7 @@ const app = async (req, res) => {
           threadId,
         );
         await sendMessengerMessage(userId, aiResponse, platform);
-        const endTime = new Date();
-        logLogs(
-          `Whole function time: ${endTime.getTime() - startTime.getTime()}`,
-        );
+        logTime(startTime, 'Whole function time:');
         functions.logger.log(logs);
         return functions.logger.debug('Finished Messenger function');
       }
