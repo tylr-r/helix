@@ -10,8 +10,6 @@ const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
-const messengerId = process.env.MESSENGER_ID;
-const instagramId = process.env.INSTAGRAM_ID;
 const assistantId = process.env.ASSISTANT_ID;
 
 import OpenAI from 'openai';
@@ -222,151 +220,6 @@ const getThreadId = async (from: string, message: string) => {
   }
 };
 
-const storeMessage = async (from: string, message: any, role: string) => {
-  functions.logger.log('Storing message with in Firestore');
-  try {
-    await admin
-      .firestore()
-      .collection('users')
-      .doc(from)
-      .collection('conversation')
-      .add({
-        text: message,
-        creation: admin.firestore.FieldValue.serverTimestamp(),
-        role,
-      });
-  } catch (error) {
-    functions.logger.error(`Error storing message: ${error}`);
-  }
-};
-
-const getPreviousMessages = async (
-  from: string,
-  amount: number,
-  platform: string,
-) => {
-  const start = Date.now();
-  functions.logger.log('getting existing messages');
-  let previousMessages: any;
-  if (platform === 'messenger') {
-    functions.logger.log('getting fb messages');
-    const fbMessages = await facebookGraphRequest(
-      `me/conversations?fields=messages.limit(${amount}){created_time,from,message}&user_id=${from}&`,
-      {},
-      'Error while getting Messenger messages',
-      'GET',
-    );
-    functions.logger.log(`fb messages: ${JSON.stringify(fbMessages?.data)}`);
-    const fbMessageHistory = fbMessages?.data.data[0].messages.data;
-    previousMessages = fbMessageHistory
-      .map(
-        (item: {
-          from: { name: string; id: string };
-          message: string;
-          created_time: string;
-        }) => {
-          return {
-            role: item.from.id === messengerId ? 'assistant' : 'user',
-            name: item.from.name,
-            text: item.message,
-            creation: item.created_time,
-          };
-        },
-      )
-      .reverse();
-    previousMessages = previousMessages.slice(0, previousMessages.length - 1);
-    functions.logger.log(
-      `fb messages converted: ${JSON.stringify(previousMessages)}`,
-    );
-  } else if (platform === 'instagram') {
-    functions.logger.log('getting ig messages');
-    const igMessages = await facebookGraphRequest(
-      `me/conversations?fields=messages.limit(${amount}){created_time,from,message}&user_id=${from}&platform=instagram&`,
-      {},
-      'Error while getting Instagram messages',
-      'GET',
-    );
-    functions.logger.log(`ig messages: ${JSON.stringify(igMessages?.data)}`);
-    const igMessageHistory = igMessages?.data.data[0].messages.data;
-    previousMessages = igMessageHistory
-      .map(
-        (item: {
-          from: { name: string; id: string };
-          message: string;
-          created_time: string;
-        }) => {
-          return {
-            role: item.from.id === instagramId ? 'assistant' : 'user',
-            name: item.from.name,
-            text: item.message,
-            creation: item.created_time,
-          };
-        },
-      )
-      .reverse();
-    previousMessages = previousMessages.slice(0, previousMessages.length - 1);
-    functions.logger.log(
-      `ig messages converted: ${JSON.stringify(previousMessages)}`,
-    );
-  } else {
-    functions.logger.log('getting firestore messages');
-    const snapshot = await admin
-      .firestore()
-      .collection('users')
-      .doc(from)
-      .collection('conversation')
-      .orderBy('creation', 'desc')
-      .limit(amount) // Limit the number of messages returned
-      .get();
-    previousMessages = snapshot.docs
-      .map((doc: { data: () => any }) => doc.data())
-      .reverse();
-    functions.logger.log(
-      `Previous messages: ${JSON.stringify(previousMessages)}`,
-    );
-  }
-  const end = Date.now();
-  functions.logger.log(`getPreviousMessages took ${end - start} ms`);
-  return previousMessages;
-};
-
-const createMessageToAi = async (
-  messages: any[],
-  msg_body: any,
-  customReminder: string,
-  name: string,
-  imageInterpretation: any,
-) => {
-  functions.logger.log(
-    `previous messages in this func: ${JSON.stringify(messages)}`,
-  );
-  // Get primer json from notion
-  const { system, main, reminder } = await getPrimer();
-  const cleanedName = name.replace(/( )/g, '_');
-  const latestMessage = imageInterpretation
-    ? `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`
-    : msg_body;
-
-  const previous = messages.map((msg: { role: string; text: any }) => ({
-    role: msg.role,
-    content: msg.text,
-    name: msg.role === 'assistant' ? 'Tylr' : cleanedName,
-  }));
-
-  return [
-    ...system,
-    ...main,
-    // Add retrieved messages:
-    ...previous,
-    { role: 'user', content: `${latestMessage}`, name: cleanedName },
-    ...reminder,
-    {
-      role: 'system',
-      content: customReminder,
-    },
-  ];
-};
-
 const openAiRequest = async (
   messages: any[],
   model: string,
@@ -475,24 +328,16 @@ const processMessage = async (
   platform: string,
   attachment: any,
   name: string,
-  thread?: string,
+  thread: string,
 ) => {
   functions.logger.log(`Message from ${platform}:  ${msgBody}`);
 
   functions.logger.log('user info: ' + JSON.stringify(name));
 
-  // Store message if WhatsApp
-  if (platform === 'whatsapp') {
-    storeMessage(userId, msgBody, 'user');
-  }
-  const messages = await getPreviousMessages(userId, 15, platform);
+  let response = 'Sorry, I am having troubles lol';
 
-  functions.logger.log('previous messages: ' + JSON.stringify(messages));
-
-  const updatedName = platform === 'messenger' ? messages[0].name : name;
-  functions.logger.log('updated name: ' + updatedName);
   // Custom Reminder
-  const customReminder = `you are talking with ${updatedName} on ${platform} and the current time is ${currentTime}`;
+  const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
   functions.logger.log('customReminder: ' + customReminder);
 
   let imageInterpretation;
@@ -516,77 +361,50 @@ const processMessage = async (
     );
   }
 
-  // Create messages to AI
-  const messagesToAi = await createMessageToAi(
-    messages,
-    msgBody,
-    customReminder,
-    updatedName,
-    imageInterpretation,
-  );
-
-  const model = attachment ? 'gpt-4-vision-preview' : 'gpt-4-1106-preview';
+  const model = 'gpt-4-1106-preview';
 
   logLogs(`${attachment}, ${model}`);
 
-  // Send messages to OpenAI
-  functions.logger.log('trying openai request');
-  let response = await openAiRequest(
-    messagesToAi,
-    'gpt-4-1106-preview',
-    2000,
-    1,
-  );
-  if (!response) {
-    functions.logger.error('Response from openAiRequest was void');
-    response = 'Sorry, I am having troubles lol';
-  }
+  const userMessage = attachment ? imageInterpretation : msgBody;
 
-  // Store assistant's response to Firestore if WhatsApp
-  if (platform === 'whatsapp') {
-    storeMessage(userId, response, 'assistant');
-  }
+  // Get primer json from notion
+  const { system, reminder } = await getPrimer();
+  const instructions = `${JSON.stringify(system)} ${JSON.stringify(
+    reminder,
+  )} ${customReminder}`;
 
-  // Create threads run
-  if (thread) {
-    // Get primer json from notion
-    const { system, reminder } = await getPrimer();
-    const instructions = `${JSON.stringify(system)} ${JSON.stringify(
-      reminder,
-    )} ${customReminder}`;
-    logLogs(`Creating thread message with id ${thread}`);
-    await openai.beta.threads.messages.create(thread, {
-      role: 'user',
-      content: msgBody,
-    });
-    const run = await openai.beta.threads.runs.create(thread, {
-      assistant_id: assistantId ?? '',
-      model,
-      instructions,
-    });
-    logLogs(`Creating thread run with id ${thread}`);
-    let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
-    while (runStatus.status !== 'completed') {
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
-      if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
-        logLogs(`Run status is '${runStatus.status}'. Exiting.`);
-        break;
-      }
+  logLogs(`Creating thread message with id ${thread}`);
+  await openai.beta.threads.messages.create(thread, {
+    role: 'user',
+    content: userMessage,
+  });
+
+  logLogs(`Creating thread run with id ${thread}`);
+  const run = await openai.beta.threads.runs.create(thread, {
+    assistant_id: assistantId ?? '',
+    model,
+    instructions,
+  });
+  let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
+  while (runStatus.status !== 'completed') {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
+    if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
+      logLogs(`Run status is '${runStatus.status}'. Exiting.`);
+      break;
     }
-    logLogs(`Run completed`);
-    const messages = await openai.beta.threads.messages.list(thread);
-    logLogs(`Messages: ${JSON.stringify(messages)}`);
-    const lastMessage = messages.data
-      .filter(
-        (message) => message.run_id === run.id && message.role === 'assistant',
-      )
-      .pop()?.content[0];
-    logLogs(`Last message: ${JSON.stringify(lastMessage)}`);
-    if (lastMessage?.type === 'text')
-      response = lastMessage?.text.value ?? 'Sorry, I am having troubles lol';
-  } else {
-    logLogs('No thread id');
+  }
+  logLogs(`Run completed`);
+  const messages = await openai.beta.threads.messages.list(thread);
+  logLogs(`Messages: ${JSON.stringify(messages)}`);
+  const lastMessage = messages.data
+    .filter(
+      (message) => message.run_id === run.id && message.role === 'assistant',
+    )
+    .pop()?.content[0];
+  logLogs(`Last message: ${JSON.stringify(lastMessage)}`);
+  if (lastMessage?.type === 'text') {
+    response = lastMessage?.text.value;
   }
 
   return response;
@@ -606,7 +424,7 @@ const checkIfNeedAgent = async (message: string, userId, platform) => {
     'talk to a real human',
   ];
   // get an agent if the message contains any of the agent phrases and is on instagram
-  let needAgent =
+  const needAgent =
     agentPhrases.some((phrases) => message.includes(phrases)) &&
     platform === 'instagram';
   functions.logger.log(`Need an agent from this message: ${needAgent}`);
@@ -616,7 +434,7 @@ const checkIfNeedAgent = async (message: string, userId, platform) => {
       'I am connecting you with a real agent. Tyler will be with you within 24 hours.',
       platform,
     );
-  } else {
+  } /* else {
     const recentMessages = await getPreviousMessages(userId, 5, platform);
     if (recentMessages) {
       const recentMessagesString = JSON.stringify(recentMessages);
@@ -627,7 +445,7 @@ const checkIfNeedAgent = async (message: string, userId, platform) => {
         functions.logger.log(`Recently requested agent`);
       }
     }
-  }
+  } */
   return needAgent;
 };
 
@@ -684,12 +502,16 @@ const app = async (req, res) => {
         const { userId, msgBody, name, phoneNumberId, msgId } =
           extractWhatsAppMessageDetails(req);
         sendWhatsAppReceipt(phoneNumberId, msgId);
+        // Get user thread
+        const thread = await getThreadId(userId, msgBody);
+        functions.logger.log(`Thread: ${thread}`);
         const aiResponse = await processMessage(
           userId,
           msgBody,
           platform,
           null,
           name,
+          thread,
         );
         await sendWhatsAppMessage(phoneNumberId, userId, aiResponse);
         return functions.logger.log('Finished WhatsApp function');
@@ -708,15 +530,8 @@ const app = async (req, res) => {
         const userId = entry.messaging[0].sender.id;
         const msgBody = entry.messaging[0].message.text ?? '';
         const attachment = entry.messaging[0]?.message?.attachments ?? null;
-        //const attachmentType = attachment[0]?.type;
-        //const attachmentPayload = attachment[0]?.payload.url;
-        //const isEcho = entry.messaging[0].message.is_echo;
 
         logLogs(`Attachment: ${attachment}`);
-
-        /* if (!msgBody || isEcho || attachmentType !== 'image') {
-          return functions.logger.log('Not a message');
-        } */
 
         // Get user thread
         const thread = await getThreadId(userId, msgBody);
