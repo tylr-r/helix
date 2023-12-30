@@ -167,7 +167,7 @@ const sendWhatsAppMessage = async (
   );
 };
 
-const storeThreadId = async (from: string, thread: any) => {
+const storeThreadId = async (from: string, thread: any, userName: string) => {
   functions.logger.log('Storing openAi thread id with in Database');
   const { id, metadata, created_at, object } = thread;
   try {
@@ -176,13 +176,14 @@ const storeThreadId = async (from: string, thread: any) => {
       metadata,
       created_at,
       object,
+      userName,
     });
   } catch (error) {
     functions.logger.error(`Error storing thread id: ${error}`);
   }
 };
 
-const getThreadId = async (from: string, message: string) => {
+const getThread = async (from: string, message: string, platform: string) => {
   const start = Date.now();
   functions.logger.debug('getting thread id from firestore');
   // check if thread id exists
@@ -192,6 +193,24 @@ const getThreadId = async (from: string, message: string) => {
     const userInfoSnapshot = userSnapshot.val();
 
     if (!userInfoSnapshot) {
+      let userName = 'someone';
+      if (platform === 'messenger') {
+        const userInfo = await facebookGraphRequest(
+          `me/conversations?fields=senders&user_id=${from}&`,
+          {},
+          'Error while getting Messenger name',
+          'GET',
+        );
+        userName = userInfo?.data.data[0].senders.data[0].name;
+      } else if (platform === 'instagram') {
+        const userInfo = await facebookGraphRequest(
+          `me/conversations?fields=name&platform=instagram&user_id=${from}&`,
+          {},
+          'Error while getting Instagram name',
+          'GET',
+        );
+        userName = userInfo?.data.data[0].name;
+      }
       const thread = await openai.beta.threads.create({
         messages: [
           {
@@ -201,18 +220,19 @@ const getThreadId = async (from: string, message: string) => {
         ],
         metadata: {
           userId: from,
+          name: userName,
         },
       });
-      storeThreadId(from, thread);
+      storeThreadId(from, thread, userName);
       logTime(start, 'getThreadId');
-      return thread.id;
+      return thread;
     }
-    const threadId = userInfoSnapshot.thread?.id;
+    const thread = userInfoSnapshot.thread;
     functions.logger.debug(
-      `Thread id from Firestore: ${JSON.stringify(threadId)}`,
+      `Thread info from database: ${JSON.stringify(thread)}`,
     );
     logTime(start, 'getThreadId');
-    return threadId;
+    return thread;
   } catch (error) {
     functions.logger.error(`Error getting thread id: ${error}`);
     logTime(start, 'getThreadId');
@@ -505,7 +525,7 @@ const app = async (req, res) => {
           extractWhatsAppMessageDetails(req);
         sendWhatsAppReceipt(phoneNumberId, msgId);
         // Get user thread
-        const thread = await getThreadId(userId, msgBody);
+        const thread = await getThread(userId, msgBody, platform);
         functions.logger.log(`Thread: ${thread}`);
         const aiResponse = await processMessage(
           userId,
@@ -535,8 +555,16 @@ const app = async (req, res) => {
 
         logLogs(`Attachment: ${attachment}`);
 
+        // Mark message as seen if Messenger
+        if (platform === 'messenger') {
+          sendMessengerReceipt(userId, 'mark_seen');
+          sendMessengerReceipt(userId, 'typing_on');
+        }
+
         // Get user thread
-        const thread = await getThreadId(userId, msgBody);
+        const thread = await getThread(userId, msgBody, platform);
+        const threadId = thread?.id;
+        const name = thread?.metadata?.name;
         functions.logger.log(`Thread: ${thread}`);
 
         // Check if message is looking for an agent
@@ -544,20 +572,13 @@ const app = async (req, res) => {
         if (needAgent) {
           return functions.logger.log('Agent needed');
         }
-
-        // Mark message as seen if Messenger
-        if (platform === 'messenger') {
-          await sendMessengerReceipt(userId, 'mark_seen');
-          sendMessengerReceipt(userId, 'typing_on');
-        }
-
         const aiResponse = await processMessage(
           userId,
           msgBody,
           platform,
           attachment,
-          'someone',
-          thread,
+          name,
+          threadId,
         );
         await sendMessengerMessage(userId, aiResponse, platform);
         const endTime = new Date();
