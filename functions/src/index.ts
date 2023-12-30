@@ -365,7 +365,9 @@ const processMessage = async (
 
   logLogs(`${attachment}, ${model}`);
 
-  const userMessage = attachment ? imageInterpretation : msgBody;
+  const userMessage = attachment
+    ? `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`
+    : msgBody;
 
   // Get primer json from notion
   const { system, reminder } = await getPrimer();
