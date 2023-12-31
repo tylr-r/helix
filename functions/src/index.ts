@@ -176,7 +176,7 @@ const storeThreadId = async (from: string, thread: any, userName: string) => {
   }
 };
 
-const getThread = async (from: string, message: string, platform: string) => {
+const getThread = async (from: string, platform: string) => {
   const start = Date.now();
   functions.logger.debug('getting thread id from firestore');
   // check if thread id exists
@@ -205,12 +205,6 @@ const getThread = async (from: string, message: string, platform: string) => {
         userName = userInfo?.data.data[0].name;
       }
       const thread = await openai.beta.threads.create({
-        messages: [
-          {
-            role: 'user',
-            content: message,
-          },
-        ],
         metadata: {
           userId: from,
           name: userName,
@@ -313,6 +307,7 @@ const extractWhatsAppMessageDetails = (req: {
   const message = request.messages[0];
 
   const userId = message.from;
+  const messageId = message.id;
   const msgBody = message.text.body;
   const name = request.contacts[0]?.profile.name;
   const phoneNumberId = request.metadata.phone_number_id;
@@ -321,6 +316,7 @@ const extractWhatsAppMessageDetails = (req: {
   functions.logger.log(`Whatsapp request: ${JSON.stringify(request)}`);
 
   return {
+    messageId,
     userId,
     msgBody,
     name,
@@ -330,6 +326,7 @@ const extractWhatsAppMessageDetails = (req: {
 };
 
 const processMessage = async (
+  messageId: string,
   userId: string,
   msgBody: string,
   platform: string,
@@ -381,7 +378,44 @@ const processMessage = async (
   await openai.beta.threads.messages.create(thread, {
     role: 'user',
     content: userMessage,
+    metadata: {
+      messageId,
+    },
   });
+
+  // Check if another message was added after processing
+  const threadStatus = await openai.beta.threads.messages.list(thread);
+  let lastMessageId = (threadStatus?.data[0]?.metadata as any)?.messageId as
+    | string
+    | null;
+  // add delay to wait for message to be added
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  if (platform === 'messenger') {
+    const messengerMessages = await facebookGraphRequest(
+      `me/conversations?fields=messages.limit(1){created_time,from,message}&user_id=${userId}&`,
+      {},
+      'Error while getting Messenger name',
+      'GET',
+    );
+    functions.logger.warn(
+      `Messenger messages: ${JSON.stringify(messengerMessages?.data)}`,
+    );
+    lastMessageId = await messengerMessages?.data?.data[0]?.messages?.data[0]
+      ?.id;
+    functions.logger.warn(
+      `Using latest messenger message id: ${lastMessageId}`,
+    );
+  } else {
+    functions.logger.warn(`Using thread message id: ${lastMessageId}`);
+  }
+  if (lastMessageId) {
+    functions.logger.log(`Last message id: ${lastMessageId}`);
+    functions.logger.log(`New message id: ${messageId}`);
+    if (lastMessageId !== messageId) {
+      functions.logger.warn('New message was added, exiting');
+      return '';
+    }
+  }
 
   const run = await openai.beta.threads.runs.create(thread, {
     assistant_id: assistantId ?? '',
@@ -499,13 +533,14 @@ const app = async (req, res) => {
         req.body.entry[0].changes[0].value.messages &&
         req.body.entry[0].changes[0].value.messages[0]
       ) {
-        const { userId, msgBody, name, phoneNumberId, msgId } =
+        const { messageId, userId, msgBody, name, phoneNumberId, msgId } =
           extractWhatsAppMessageDetails(req);
         sendWhatsAppReceipt(phoneNumberId, msgId);
         // Get user thread
-        const thread = await getThread(userId, msgBody, platform);
+        const thread = await getThread(userId, platform);
         functions.logger.log(`Thread: ${thread}`);
         const aiResponse = await processMessage(
+          messageId,
           userId,
           msgBody,
           platform,
@@ -528,6 +563,7 @@ const app = async (req, res) => {
       const entry = req.body.entry[0];
       if (entry.messaging) {
         const userId = entry.messaging[0].sender.id;
+        const messageId = entry.messaging[0].message.mid ?? '';
         const msgBody = entry.messaging[0].message.text ?? '';
         const attachment = entry.messaging[0]?.message?.attachments ?? null;
 
@@ -538,7 +574,7 @@ const app = async (req, res) => {
         }
 
         // Get user thread
-        const thread = await getThread(userId, msgBody, platform);
+        const thread = await getThread(userId, platform);
         const threadId = thread?.id;
         const name = thread?.metadata?.name;
         functions.logger.log(`Thread: ${thread}`);
@@ -549,6 +585,7 @@ const app = async (req, res) => {
           return functions.logger.log('Agent needed');
         }
         const aiResponse = await processMessage(
+          messageId,
           userId,
           msgBody,
           platform,
@@ -556,6 +593,9 @@ const app = async (req, res) => {
           name,
           threadId,
         );
+        if (aiResponse === '') {
+          return functions.logger.log('New message was added, exiting');
+        }
         await sendMessengerMessage(userId, aiResponse, platform);
         logTime(startTime, 'Whole function time:');
         functions.logger.log(logs);
