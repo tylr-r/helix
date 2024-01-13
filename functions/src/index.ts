@@ -176,6 +176,137 @@ const storeThreadId = async (from: string, thread: any, userName: string) => {
   }
 };
 
+const storePersonalityAnalysis = async (
+  from: string,
+  threadMessages: Array<any>,
+) => {
+  functions.logger.log('Storing personality in Database');
+  // check if thread id exists
+  try {
+    const userRef = database.ref(`users/${from}`);
+    const userSnapshot = await userRef.once('value');
+    const userInfoSnapshot = userSnapshot.val();
+
+    // get last 10 messages
+    const messages = threadMessages
+      .map((message) => {
+        return {
+          role: message.role,
+          content: message.content[0]?.text?.value,
+        };
+      })
+      .reverse()
+      .slice(-2);
+    functions.logger.log(`Messages: ${JSON.stringify(messages)}`);
+    if (!userInfoSnapshot) {
+      return;
+    }
+    const currentPersonality: string = userInfoSnapshot.personality ?? {
+      openness: 'undefined',
+      conscientiousness: 'undefined',
+      extraversion: 'undefined',
+      agreeableness: 'undefined',
+      neuroticism: 'undefined',
+      creativity: 'undefined',
+      empathy: 'undefined',
+      resilience: 'undefined',
+      optimism: 'undefined',
+      adaptability: 'undefined',
+      honesty: 'undefined',
+      patience: 'undefined',
+      leadership: 'undefined',
+      altruism: 'undefined',
+      self_discipline: 'undefined',
+      emotional_intelligence: 'undefined',
+      flexibility: 'undefined',
+      casualness: 'undefined',
+      transactional_analysis: '',
+      personality_description: '',
+    };
+    logLogs(`Current personality: ${currentPersonality}`);
+    const instruction = `You are analyzing the personality of the user you are talking to. This is their current personality on file: <<<${JSON.stringify(
+      currentPersonality,
+    )}>>>. Update this personality based on the following message using the same format as before. Only make changes if necessary or if there is sufficient information in the message to do so.`;
+    const newPersonality = await openAiRequest(
+      [messages[0], { role: 'user', content: instruction }],
+      'gpt-4-1106-preview',
+      3000,
+      0.2,
+      true,
+      [
+        {
+          name: 'personality',
+          description:
+            "Update this personality based on the user's message using the same format as before. Only make changes if necessary or if there is sufficient information in the message to do so.",
+          parameters: {
+            type: 'object',
+            properties: {
+              openness: { type: 'string' },
+              conscientiousness: { type: 'string' },
+              extraversion: { type: 'string' },
+              agreeableness: { type: 'string' },
+              neuroticism: { type: 'string' },
+              creativity: { type: 'string' },
+              empathy: { type: 'string' },
+              resilience: { type: 'string' },
+              optimism: { type: 'string' },
+              adaptability: { type: 'string' },
+              honesty: { type: 'string' },
+              patience: { type: 'string' },
+              leadership: { type: 'string' },
+              altruism: { type: 'string' },
+              self_discipline: { type: 'string' },
+              emotional_intelligence: { type: 'string' },
+              flexibility: { type: 'string' },
+              casualness: { type: 'string' },
+              seriousness: { type: 'string' },
+              transactional_analysis: {
+                type: 'string',
+                description:
+                  'Three major aspects of our personality: the Parent, the Adult, and the Child. Each one influences our communication and behavior. What role are they in?',
+              },
+              personality_description: {
+                type: 'string',
+                description:
+                  'Summarize the personality of the user in a few sentences. Are they looking for a more playful exchange?',
+              },
+            },
+            required: [
+              'openness',
+              'conscientiousness',
+              'extraversion',
+              'agreeableness',
+              'neuroticism',
+              'creativity',
+              'empathy',
+              'resilience',
+              'optimism',
+              'adaptability',
+              'honesty',
+              'patience',
+              'leadership',
+              'altruism',
+              'self_discipline',
+              'emotional_intelligence',
+              'flexibility',
+              'casualness',
+              'seriousness',
+              'transactional_analysis',
+              'personality_description',
+            ],
+          },
+        },
+      ],
+    );
+    logLogs(`New personality: ${newPersonality}`);
+    database.ref(`users/${from}/personality`).set({
+      personality: newPersonality,
+    });
+  } catch (error) {
+    functions.logger.error(`Error storing thread id: ${error}`);
+  }
+};
+
 const getThread = async (from: string, platform: string) => {
   const start = Date.now();
   functions.logger.debug('getting thread id from firestore');
@@ -237,6 +368,7 @@ const openAiRequest = async (
 ) => {
   const start = Date.now();
   let completion;
+  functions.logger.log({ function_call, ai_functions });
   try {
     if (function_call && ai_functions !== undefined) {
       functions.logger.log('Starting function call');
@@ -384,8 +516,11 @@ const processMessage = async (
   });
 
   // Check if another message was added after processing
-  const threadStatus = await openai.beta.threads.messages.list(thread);
-  let lastMessageId = (threadStatus?.data[0]?.metadata as any)?.messageId as
+  const getThread = await openai.beta.threads.messages.list(thread);
+  const threadMessages = getThread?.data;
+  storePersonalityAnalysis(userId, threadMessages);
+  functions.logger.warn(`Thread status: ${JSON.stringify(getThread)}`);
+  let lastMessageId = (threadMessages[0]?.metadata as any)?.messageId as
     | string
     | null;
   // add delay to wait for message to be added
