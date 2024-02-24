@@ -67,3 +67,5 @@ node_modules/
 
 .DS_Store
 .gitignore
+test/facebook_messages.json
+facebook_messages.json
