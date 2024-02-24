@@ -10,7 +10,9 @@ const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
+const personalityBlockId = process.env.PERSONALITY_BLOCK_ID;
 const assistantId = process.env.ASSISTANT_ID;
+const tylrId = process.env.TYLR_ID;
 
 import OpenAI from 'openai';
 const configuration = {
@@ -173,6 +175,16 @@ const storeThreadId = async (from: string, thread: any, userName: string) => {
   }
 };
 
+const updateAssistant = async (instructions: string) => {
+  const start = Date.now();
+  logLogs('Updating assistant');
+  await openai.beta.assistants.update(assistantId ?? '', {
+    instructions,
+  });
+  logTime(start, 'updateAssistant');
+  return;
+};
+
 const storePersonalityAnalysis = async (
   from: string,
   threadMessages: Array<any>,
@@ -197,33 +209,10 @@ const storePersonalityAnalysis = async (
     if (!userInfoSnapshot) {
       return;
     }
-    const currentPersonality: string = userInfoSnapshot.personality ?? {
-      openness: 'undefined',
-      conscientiousness: 'undefined',
-      extraversion: 'undefined',
-      agreeableness: 'undefined',
-      neuroticism: 'undefined',
-      creativity: 'undefined',
-      empathy: 'undefined',
-      resilience: 'undefined',
-      optimism: 'undefined',
-      adaptability: 'undefined',
-      honesty: 'undefined',
-      patience: 'undefined',
-      leadership: 'undefined',
-      altruism: 'undefined',
-      self_discipline: 'undefined',
-      emotional_intelligence: 'undefined',
-      flexibility: 'undefined',
-      casualness: 'undefined',
-      transactional_analysis: '',
-      personality_description: '',
-    };
-    const instruction = `You are analyzing the personality of the user you are talking to. This is their current personality on file: <<<${JSON.stringify(
-      currentPersonality,
-    )}>>>. Update this personality based on the following message using the same format as before. Only make changes if necessary or if there is sufficient information in the message to do so.`;
+    // const currentPersonality: string = userInfoSnapshot.personality ?? {};
+    const instruction = `You are analyzing the personality of the user you are talking to. Update this personality based on the user's messages. Make sure every section is filled out with something and constantly updated. No section should be empty`;
     const newPersonality = await openAiRequest(
-      [messages[0], { role: 'user', content: instruction }],
+      [...messages, { role: 'system', content: instruction }],
       'gpt-4-1106-preview',
       3000,
       0.2,
@@ -232,29 +221,49 @@ const storePersonalityAnalysis = async (
         {
           name: 'personality',
           description:
-            "Update this personality based on the user's message using the same format as before. Only make changes if necessary or if there is sufficient information in the message to do so.",
+            "Update this personality based on the user's messages. Make sure every section is filled out in full detail with your best assumptions and constantly updated. No section should be empty",
           parameters: {
             type: 'object',
             properties: {
-              openness: { type: 'string' },
-              conscientiousness: { type: 'string' },
-              extraversion: { type: 'string' },
-              agreeableness: { type: 'string' },
-              neuroticism: { type: 'string' },
-              creativity: { type: 'string' },
-              empathy: { type: 'string' },
-              resilience: { type: 'string' },
-              optimism: { type: 'string' },
-              adaptability: { type: 'string' },
-              honesty: { type: 'string' },
-              patience: { type: 'string' },
-              leadership: { type: 'string' },
-              altruism: { type: 'string' },
-              self_discipline: { type: 'string' },
-              emotional_intelligence: { type: 'string' },
-              flexibility: { type: 'string' },
-              casualness: { type: 'string' },
-              seriousness: { type: 'string' },
+              openness: { type: 'string', enum: ['low', 'medium', 'high'] },
+              conscientiousness: {
+                type: 'string',
+                enum: ['low', 'medium', 'high'],
+              },
+              extraversion: { type: 'string', enum: ['low', 'medium', 'high'] },
+              agreeableness: {
+                type: 'string',
+                enum: ['low', 'medium', 'high'],
+              },
+              neuroticism: { type: 'string', enum: ['low', 'medium', 'high'] },
+              creativity: { type: 'string', enum: ['low', 'medium', 'high'] },
+              empathy: { type: 'string', enum: ['low', 'medium', 'high'] },
+              resilience: { type: 'string', enum: ['low', 'medium', 'high'] },
+              optimism: { type: 'string', enum: ['low', 'medium', 'high'] },
+              adaptability: { type: 'string', enum: ['low', 'medium', 'high'] },
+              honesty: { type: 'string', enum: ['low', 'medium', 'high'] },
+              patience: { type: 'string', enum: ['low', 'medium', 'high'] },
+              leadership: { type: 'string', enum: ['low', 'medium', 'high'] },
+              altruism: { type: 'string', enum: ['low', 'medium', 'high'] },
+              self_discipline: {
+                type: 'string',
+                enum: ['low', 'medium', 'high'],
+              },
+              emotional_intelligence: {
+                type: 'string',
+                enum: ['low', 'medium', 'high'],
+              },
+              flexibility: { type: 'string', enum: ['low', 'medium', 'high'] },
+              casualness: { type: 'string', enum: ['low', 'medium', 'high'] },
+              seriousness: { type: 'string', enum: ['low', 'medium', 'high'] },
+              likes: {
+                type: 'string',
+                description: 'What do they like? Keep adding to this list',
+              },
+              dislikes: {
+                type: 'string',
+                description: 'What do they dislike? Keep adding to this list',
+              },
               transactional_analysis: {
                 type: 'string',
                 description:
@@ -263,7 +272,12 @@ const storePersonalityAnalysis = async (
               personality_description: {
                 type: 'string',
                 description:
-                  'Summarize the personality of the user in a few sentences. Are they looking for a more playful exchange?',
+                  'Summarize the personality of the user. This must be at least a few sentences (required). Are they looking for a more playful exchange? Update this section so that the AI can better understand the user.',
+              },
+              message_writing_style: {
+                type: 'string',
+                description:
+                  'Summarize the writing style of the user in at least few sentences (required). Do they use emojis? Are they formal? Do they use slang? Do they use punctuation? Do they use capitalization?',
               },
             },
             required: [
@@ -286,8 +300,11 @@ const storePersonalityAnalysis = async (
               'flexibility',
               'casualness',
               'seriousness',
+              'likes',
+              'dislikes',
               'transactional_analysis',
               'personality_description',
+              'message_writing_style',
             ],
           },
         },
@@ -297,6 +314,41 @@ const storePersonalityAnalysis = async (
     database.ref(`users/${from}/personality`).set({
       personality: newPersonality,
     });
+    try {
+      logLogs('Updating personality in Notion');
+      const data = {
+        code: {
+          rich_text: [
+            {
+              type: 'text',
+              text: {
+                content: JSON.stringify(newPersonality),
+              },
+            },
+          ],
+          language: 'json',
+        },
+      };
+      const headers = {
+        'Notion-Version': '2022-02-22',
+        Authorization: `Bearer ${notionToken}`,
+        'Content-Type': 'application/json',
+      };
+      fetch(`https://api.notion.com/v1/blocks/${personalityBlockId}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify(data),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          logLogs(`Notion response: ${JSON.stringify(data)}`);
+        })
+        .catch((error) => {
+          console.error('Error:', error);
+        });
+    } catch (error) {
+      functions.logger.error(`Error updating personality: ${error}`);
+    }
   } catch (error) {
     functions.logger.error(`Error storing thread id: ${error}`);
   }
@@ -456,9 +508,11 @@ const processMessage = async (
 ) => {
   logLogs(`Message from ${platform}:  ${msgBody}`);
   logLogs('user info: ' + JSON.stringify(name));
+  const isTylr = userId === tylrId;
+  let userMessage = msgBody;
+  let instructions = '';
   let response = 'Sorry, I am having troubles lol';
   const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
-  let userMessage = msgBody;
   if (attachment) {
     const imageMessage = [
       {
@@ -478,11 +532,21 @@ const processMessage = async (
     );
     userMessage = `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`;
   }
-  // Get primer json from notion
-  const { system, reminder } = await getPrimer();
-  const instructions = `${JSON.stringify(system)} ${JSON.stringify(
-    reminder,
-  )} ${customReminder}`;
+  if (isTylr) {
+    const tylrDB = await database
+      .ref(`users/${tylrId}/personality`)
+      .once('value');
+    const personalitySnapshot = tylrDB.val();
+    logLogs(`Personality: ${JSON.stringify(personalitySnapshot)}`);
+    const personalityString =
+      `This is your personality: ${personalitySnapshot?.personality}` ?? '';
+
+    // Get primer json from notion
+    const { system, primer, reminder } = await getPrimer();
+    instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
+    logLogs(`Instructions: ${instructions}`);
+    updateAssistant(instructions);
+  }
   await openai.beta.threads.messages.create(thread, {
     role: 'user',
     content: userMessage,
@@ -523,6 +587,7 @@ const processMessage = async (
     assistant_id: assistantId ?? '',
     model: 'gpt-4-1106-preview',
     instructions,
+    additional_instructions: customReminder,
   });
   let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
   while (runStatus.status !== 'completed') {
@@ -684,6 +749,9 @@ const app = async (req, res) => {
           name,
           threadId,
         );
+        if (platform === 'messenger') {
+          sendMessengerReceipt(userId, 'typing_off');
+        }
         if (aiResponse === '') {
           return logLogs('No response needed');
         }
