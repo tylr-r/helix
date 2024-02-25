@@ -69,3 +69,4 @@ node_modules/
 .gitignore
 test/facebook_messages.json
 facebook_messages.json
+test/output

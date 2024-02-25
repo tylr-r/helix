@@ -84,7 +84,7 @@ def download_all_messages():
     """
     all_messages = []
     after_cursor = None
-    max_messages = 100
+    max_messages = 500
 
     message_id = fetch_message_id(OTHER_PERSON_ID)
 
