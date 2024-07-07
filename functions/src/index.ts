@@ -417,21 +417,9 @@ const openAiRequest = async (
     if (function_call && ai_functions !== undefined) {
       logLogs('Starting openai function call');
       const name = ai_functions[0].name;
-      functions.logger.debug(
-        `function call: ${JSON.stringify({
-          model: 'gpt-3.5-turbo-0613',
-          messages,
-          max_tokens,
-          temperature,
-          function_call: {
-            name,
-          },
-          functions: ai_functions,
-        })}`,
-      );
       completion = await openai.chat.completions
         .create({
-          model: 'gpt-3.5-turbo-0613',
+          model: 'gpt-3.5-turbo',
           messages,
           max_tokens,
           temperature,
@@ -517,7 +505,7 @@ const processMessage = async (
     const imageMessage = [
       {
         type: 'text',
-        text: ' Describe the contents of the image thoroughly, focusing on the setting, objects, people (noting their actions, expressions, and emotions), colors, and atmosphere. Pay special attention to the context and any text included in the image. Then, if it is a meme, explain the humor by noting cultural references and the contrast that makes it funny.',
+        text: ' Visualize and describe the contents of the image thoroughly, focusing on the setting, objects, people (noting their actions, expressions, and emotions), colors, and atmosphere. Pay special attention to the context and any text included in the image. Then, if it is a meme, explain the humor by noting cultural references and the contrast that makes it funny.',
       },
       {
         type: 'image_url',
@@ -526,7 +514,7 @@ const processMessage = async (
     ];
     const imageInterpretation = await openAiRequest(
       [{ role: 'user', content: imageMessage, name: 'someone' }],
-      'gpt-4-vision-preview',
+      'gpt-4o',
       2000,
       1,
     );
@@ -585,7 +573,7 @@ const processMessage = async (
   }
   const run = await openai.beta.threads.runs.create(thread, {
     assistant_id: assistantId ?? '',
-    model: 'gpt-4-1106-preview',
+    model: 'gpt-4o',
     instructions,
     additional_instructions: customReminder,
   });
