@@ -213,7 +213,7 @@ const storePersonalityAnalysis = async (
     const instruction = `You are analyzing the personality of the user you are talking to. Update this personality based on the user's messages. Make sure every section is filled out with something and constantly updated. No section should be empty`;
     const newPersonality = await openAiRequest(
       [...messages, { role: 'system', content: instruction }],
-      'gpt-4-1106-preview',
+      'gpt-4o-mini',
       3000,
       0.2,
       true,
@@ -514,7 +514,7 @@ const processMessage = async (
     ];
     const imageInterpretation = await openAiRequest(
       [{ role: 'user', content: imageMessage, name: 'someone' }],
-      'gpt-4o',
+      'gpt-4o-mini',
       2000,
       1,
     );
@@ -573,8 +573,7 @@ const processMessage = async (
   }
   const run = await openai.beta.threads.runs.create(thread, {
     assistant_id: assistantId ?? '',
-    model: 'gpt-4o',
-    instructions,
+    model: 'gpt-4o-mini',
     additional_instructions: customReminder,
   });
   let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
