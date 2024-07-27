@@ -12,7 +12,13 @@ const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 const personalityBlockId = process.env.PERSONALITY_BLOCK_ID;
 const assistantId = process.env.ASSISTANT_ID;
-const tylrId = process.env.TYLR_ID;
+
+interface RunOptions {
+  assistant_id: string;
+  model: string;
+  additional_instructions: string;
+  instructions?: string; // Optional property
+}
 
 import OpenAI from 'openai';
 const configuration = {
@@ -186,9 +192,15 @@ const updateAssistant = async (instructions: string) => {
 };
 
 const storePersonalityAnalysis = async (
+  name: string,
   from: string,
   threadMessages: Array<any>,
+  system: string,
 ) => {
+  const start = Date.now();
+  const humanReadableDate = new Date(start).toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles',
+  });
   logLogs('Storing personality in Database');
   // check if thread id exists
   try {
@@ -205,136 +217,87 @@ const storePersonalityAnalysis = async (
         };
       })
       .reverse()
-      .slice(-2);
+      .slice(-6);
+    functions.logger.log(`message with ${name} to analyse facts: ${messages}`);
     if (!userInfoSnapshot) {
       return;
     }
-    // const currentPersonality: string = userInfoSnapshot.personality ?? {};
-    const instruction = `You are analyzing the personality of the user you are talking to. Update this personality based on the user's messages. Make sure every section is filled out with something and constantly updated. No section should be empty`;
+    const instruction = `You recently have been texting with ${name} and are going to write down your inner thoughts and judgements about the converation. Remember to be realistic, critical, and judgmental. Remember, these are your inner thoughts so you don't have to be nice. You are very accurate in analyzing people with psychology. Always include ${name}'s name in the entry and remember you are writing about your conversation so keep it in the first person. IMPORTANT: - you are tylr. - you are not an assistant and you are not an ai but rather you are an everyday person with your own opinions.`;
+
     const newPersonality = await openAiRequest(
-      [...messages, { role: 'system', content: instruction }],
+      [
+        { role: 'system', content: system },
+        ...messages,
+        { role: 'system', content: instruction },
+      ],
       'gpt-4o-mini',
       3000,
-      0.2,
+      0.8,
       true,
       [
         {
           name: 'personality',
-          description:
-            "Update this personality based on the user's messages. Make sure every section is filled out in full detail with your best assumptions and constantly updated. No section should be empty",
+          description: `Update your journal of your personal thoughts and opinions that include unique facts based on your conversation with ${name} at ${humanReadableDate}.`,
           parameters: {
             type: 'object',
             properties: {
-              openness: { type: 'string', enum: ['low', 'medium', 'high'] },
-              conscientiousness: {
+              Date: {
                 type: 'string',
-                enum: ['low', 'medium', 'high'],
+                description: humanReadableDate,
               },
-              extraversion: { type: 'string', enum: ['low', 'medium', 'high'] },
-              agreeableness: {
+              Summary: {
                 type: 'string',
-                enum: ['low', 'medium', 'high'],
+                description: `This is your inner dialog recapping a brief summary of the main topic of the conversation with ${name} for context`,
               },
-              neuroticism: { type: 'string', enum: ['low', 'medium', 'high'] },
-              creativity: { type: 'string', enum: ['low', 'medium', 'high'] },
-              empathy: { type: 'string', enum: ['low', 'medium', 'high'] },
-              resilience: { type: 'string', enum: ['low', 'medium', 'high'] },
-              optimism: { type: 'string', enum: ['low', 'medium', 'high'] },
-              adaptability: { type: 'string', enum: ['low', 'medium', 'high'] },
-              honesty: { type: 'string', enum: ['low', 'medium', 'high'] },
-              patience: { type: 'string', enum: ['low', 'medium', 'high'] },
-              leadership: { type: 'string', enum: ['low', 'medium', 'high'] },
-              altruism: { type: 'string', enum: ['low', 'medium', 'high'] },
-              self_discipline: {
+              DetailedAccount: {
                 type: 'string',
-                enum: ['low', 'medium', 'high'],
+                description: `A detailed account of the conversation with ${name}, highlighting key facts and details that you found interesting or important. Include the date and time of day. Include any unique facts about ${name} that you discovered during the conversation.`,
               },
-              emotional_intelligence: {
+              PersonalThoughts: {
                 type: 'string',
-                enum: ['low', 'medium', 'high'],
-              },
-              flexibility: { type: 'string', enum: ['low', 'medium', 'high'] },
-              casualness: { type: 'string', enum: ['low', 'medium', 'high'] },
-              seriousness: { type: 'string', enum: ['low', 'medium', 'high'] },
-              likes: {
-                type: 'string',
-                description: 'What do they like? Keep adding to this list',
-              },
-              dislikes: {
-                type: 'string',
-                description: 'What do they dislike? Keep adding to this list',
-              },
-              transactional_analysis: {
-                type: 'string',
-                description:
-                  'Three major aspects of our personality: the Parent, the Adult, and the Child. Each one influences our communication and behavior. What role are they in?',
-              },
-              personality_description: {
-                type: 'string',
-                description:
-                  'Summarize the personality of the user. This must be at least a few sentences (required). Are they looking for a more playful exchange? Update this section so that the AI can better understand the user.',
-              },
-              message_writing_style: {
-                type: 'string',
-                description:
-                  'Summarize the writing style of the user in at least few sentences (required). Do they use emojis? Are they formal? Do they use slang? Do they use punctuation? Do they use capitalization?',
+                description: `Your personal analysis of the conversation including any doubts, concerns, or critical viewpoints about ${name} and thoughts about their reaction to what you have to say. These are notes to yourself to remember in the future. Include critical judgements or skepticism as well. These are your subjective opinions.`,
               },
             },
             required: [
-              'openness',
-              'conscientiousness',
-              'extraversion',
-              'agreeableness',
-              'neuroticism',
-              'creativity',
-              'empathy',
-              'resilience',
-              'optimism',
-              'adaptability',
-              'honesty',
-              'patience',
-              'leadership',
-              'altruism',
-              'self_discipline',
-              'emotional_intelligence',
-              'flexibility',
-              'casualness',
-              'seriousness',
-              'likes',
-              'dislikes',
-              'transactional_analysis',
-              'personality_description',
-              'message_writing_style',
+              'Summary',
+              'DetailedAccount',
+              'PersonalThoughts',
+              'EmotionDetection',
             ],
           },
         },
       ],
     );
-    logLogs(`New personality: ${newPersonality}`);
     database.ref(`users/${from}/personality`).set({
       personality: newPersonality,
     });
     try {
       logLogs('Updating personality in Notion');
       const data = {
-        code: {
-          rich_text: [
-            {
-              type: 'text',
-              text: {
-                content: JSON.stringify(newPersonality),
-              },
+        children: [
+          {
+            object: 'block',
+            type: 'code',
+            code: {
+              rich_text: [
+                {
+                  type: 'text',
+                  text: {
+                    content: JSON.stringify(newPersonality),
+                  },
+                },
+              ],
+              language: 'json',
             },
-          ],
-          language: 'json',
-        },
+          },
+        ],
       };
       const headers = {
         'Notion-Version': '2022-02-22',
         Authorization: `Bearer ${notionToken}`,
         'Content-Type': 'application/json',
       };
-      fetch(`https://api.notion.com/v1/blocks/${personalityBlockId}`, {
+      fetch(`https://api.notion.com/v1/blocks/${personalityBlockId}/children`, {
         method: 'PATCH',
         headers,
         body: JSON.stringify(data),
@@ -346,6 +309,7 @@ const storePersonalityAnalysis = async (
         .catch((error) => {
           console.error('Error:', error);
         });
+      logTime(start, 'updateAssistant');
     } catch (error) {
       functions.logger.error(`Error updating personality: ${error}`);
     }
@@ -419,7 +383,7 @@ const openAiRequest = async (
       const name = ai_functions[0].name;
       completion = await openai.chat.completions
         .create({
-          model: 'gpt-3.5-turbo',
+          model: 'gpt-4o-mini',
           messages,
           max_tokens,
           temperature,
@@ -496,7 +460,8 @@ const processMessage = async (
 ) => {
   logLogs(`Message from ${platform}:  ${msgBody}`);
   logLogs('user info: ' + JSON.stringify(name));
-  const isTylr = userId === tylrId;
+  // Get primer json from notion
+  const { system, primer, reminder } = await getPrimer();
   let userMessage = msgBody;
   let instructions = '';
   let response = 'Sorry, I am having troubles lol';
@@ -520,21 +485,17 @@ const processMessage = async (
     );
     userMessage = `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`;
   }
-  if (isTylr) {
-    const tylrDB = await database
-      .ref(`users/${tylrId}/personality`)
-      .once('value');
-    const personalitySnapshot = tylrDB.val();
-    logLogs(`Personality: ${JSON.stringify(personalitySnapshot)}`);
-    const personalityString =
-      `This is your personality: ${personalitySnapshot?.personality}` ?? '';
-
-    // Get primer json from notion
-    const { system, primer, reminder } = await getPrimer();
-    instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
-    logLogs(`Instructions: ${instructions}`);
-    updateAssistant(instructions);
-  }
+  const userDB = await database
+    .ref(`users/${userId}/personality`)
+    .once('value');
+  const personalitySnapshot = userDB.val();
+  logLogs(`recent thoughts: ${JSON.stringify(personalitySnapshot)}`);
+  const personalityString =
+    `These are your most recent thoughts: ${personalitySnapshot?.personality}` ??
+    '';
+  instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
+  logLogs(`Instructions: ${instructions}`);
+  updateAssistant(instructions);
   await openai.beta.threads.messages.create(thread, {
     role: 'user',
     content: userMessage,
@@ -546,7 +507,6 @@ const processMessage = async (
   // Check if another message was added after processing
   const getThread = await openai.beta.threads.messages.list(thread);
   const threadMessages = getThread?.data;
-  storePersonalityAnalysis(userId, threadMessages);
   let lastMessageId = (threadMessages[0]?.metadata as any)?.messageId as
     | string
     | null;
@@ -571,10 +531,74 @@ const processMessage = async (
     }
     logLogs(`No new messages, continuing...`);
   }
-  const run = await openai.beta.threads.runs.create(thread, {
+  const runOptions: RunOptions = {
     assistant_id: assistantId ?? '',
     model: 'gpt-4o-mini',
     additional_instructions: customReminder,
+  };
+  if (instructions != '') {
+    runOptions.instructions = instructions;
+  }
+  // const run = await openai.beta.threads.runs.create(thread, runOptions);
+
+  const handleRequiresAction = async (run) => {
+    // Check if there are tools that require outputs
+    if (
+      run.required_action &&
+      run.required_action.submit_tool_outputs &&
+      run.required_action.submit_tool_outputs.tool_calls
+    ) {
+      // Loop through each tool in the required action section
+      const toolOutputs =
+        run.required_action.submit_tool_outputs.tool_calls.map((tool) => {
+          if (tool.function.name === 'getCurrentTemperature') {
+            return {
+              tool_call_id: tool.id,
+              output: '57',
+            };
+          } else if (tool.function.name === 'getRainProbability') {
+            return {
+              tool_call_id: tool.id,
+              output: '0.06',
+            };
+          }
+          return;
+        });
+
+      // Submit all tool outputs at once after collecting them in a list
+      if (toolOutputs.length > 0) {
+        run = await openai.beta.threads.runs.submitToolOutputsAndPoll(
+          thread,
+          run.id,
+          { tool_outputs: toolOutputs },
+        );
+        logLogs('Tool outputs submitted successfully.');
+      } else {
+        logLogs('No tool outputs to submit.');
+      }
+
+      // Check status after submitting tool outputs
+      return handleRunStatus(run);
+    }
+  };
+
+  const handleRunStatus = async (run) => {
+    // Check if the run is completed
+    if (run.status === 'completed') {
+      const messages = await openai.beta.threads.messages.list(thread);
+      logLogs(messages.data);
+      return messages.data;
+    } else if (run.status === 'requires_action') {
+      logLogs(run.status);
+      return await handleRequiresAction(run);
+    } else {
+      console.error('Run did not complete:', run);
+    }
+  };
+
+  // Create and poll run
+  const run = await openai.beta.threads.runs.createAndPoll(thread, {
+    assistant_id: assistantId ?? '',
   });
   let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
   while (runStatus.status !== 'completed') {
@@ -594,6 +618,7 @@ const processMessage = async (
   if (lastMessage?.type === 'text') {
     response = lastMessage?.text.value;
   }
+  storePersonalityAnalysis(name, userId, threadMessages, system[0].content);
   return response;
 };
 
