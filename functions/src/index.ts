@@ -383,7 +383,7 @@ const openAiRequest = async (
       const name = ai_functions[0].name;
       completion = await openai.chat.completions
         .create({
-          model: 'gpt-4o-mini',
+          model: 'gpt-4.5-preview',
           messages,
           max_tokens,
           temperature,
@@ -479,7 +479,7 @@ const processMessage = async (
     ];
     const imageInterpretation = await openAiRequest(
       [{ role: 'user', content: imageMessage, name: 'someone' }],
-      'gpt-4o-mini',
+      'gpt-4o',
       2000,
       1,
     );
@@ -491,8 +491,7 @@ const processMessage = async (
   const personalitySnapshot = userDB.val();
   logLogs(`recent thoughts: ${JSON.stringify(personalitySnapshot)}`);
   const personalityString =
-    `These are your most recent thoughts: ${personalitySnapshot?.personality}` ??
-    '';
+    `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
   logLogs(`Instructions: ${instructions}`);
   updateAssistant(instructions);
@@ -533,7 +532,7 @@ const processMessage = async (
   }
   const runOptions: RunOptions = {
     assistant_id: assistantId ?? '',
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.5-preview',
     additional_instructions: customReminder,
   };
   if (instructions != '') {
