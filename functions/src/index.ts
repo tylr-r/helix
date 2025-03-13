@@ -186,8 +186,13 @@ const updateAssistant = async (instructions: string) => {
   logLogs('Updating assistant');
   await openai.beta.assistants.update(assistantId ?? '', {
     instructions,
-  });
-  logTime(start, 'updateAssistant');
+  })
+    .then((res) => {
+      logTime(start, 'updateAssistant');
+    })
+    .catch((error) => {
+      functions.logger.error(`Error updating assistant: ${error}`);
+    });
   return;
 };
 
@@ -218,7 +223,7 @@ const storePersonalityAnalysis = async (
       })
       .reverse()
       .slice(-6);
-    functions.logger.log(`message with ${name} to analyse facts: ${messages}`);
+    functions.logger.log(`message with ${name}. recent messages: ${JSON.stringify(messages)}`);
     if (!userInfoSnapshot) {
       return;
     }
@@ -538,86 +543,84 @@ const processMessage = async (
   if (instructions != '') {
     runOptions.instructions = instructions;
   }
-  // const run = await openai.beta.threads.runs.create(thread, runOptions);
 
-  const handleRequiresAction = async (run) => {
-    // Check if there are tools that require outputs
-    if (
-      run.required_action &&
-      run.required_action.submit_tool_outputs &&
-      run.required_action.submit_tool_outputs.tool_calls
-    ) {
-      // Loop through each tool in the required action section
-      const toolOutputs =
-        run.required_action.submit_tool_outputs.tool_calls.map((tool) => {
-          if (tool.function.name === 'getCurrentTemperature') {
-            return {
-              tool_call_id: tool.id,
-              output: '57',
-            };
-          } else if (tool.function.name === 'getRainProbability') {
-            return {
-              tool_call_id: tool.id,
-              output: '0.06',
-            };
-          }
-          return;
-        });
+  try {
+    const run = await openai.beta.threads.runs.createAndPoll(thread, {
+      assistant_id: assistantId ?? '',
+    });
 
-      // Submit all tool outputs at once after collecting them in a list
-      if (toolOutputs.length > 0) {
-        run = await openai.beta.threads.runs.submitToolOutputsAndPoll(
-          thread,
-          run.id,
-          { tool_outputs: toolOutputs },
-        );
-        logLogs('Tool outputs submitted successfully.');
-      } else {
-        logLogs('No tool outputs to submit.');
+    let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
+    let retryCount = 0;
+    const maxRetries = 3;
+    const maxWaitTime = 30000; // 30 seconds
+    const startTime = Date.now();
+
+    while (runStatus.status !== 'completed') {
+      logLogs(`Run status: ${runStatus.status}`);
+
+      // Check if we've exceeded max wait time
+      if (Date.now() - startTime > maxWaitTime) {
+        throw new Error('Run timed out after 30 seconds');
       }
 
-      // Check status after submitting tool outputs
-      return handleRunStatus(run);
-    }
-  };
+      // Handle error states
+      if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
+        const errorDetails = {
+          status: runStatus.status,
+          error: runStatus.last_error?.message || 'Unknown error',
+          code: runStatus.last_error?.code || 'NO_CODE',
+          timestamp: new Date().toISOString()
+        };
 
-  const handleRunStatus = async (run) => {
-    // Check if the run is completed
-    if (run.status === 'completed') {
-      const messages = await openai.beta.threads.messages.list(thread);
-      logLogs(messages.data);
-      return messages.data;
-    } else if (run.status === 'requires_action') {
-      logLogs(run.status);
-      return await handleRequiresAction(run);
+        functions.logger.error('Run failed:', errorDetails);
+
+        // If we haven't exceeded max retries, try again
+        if (retryCount < maxRetries) {
+          logLogs(`Retrying run (attempt ${retryCount + 1}/${maxRetries})`);
+          retryCount++;
+
+          // Create a new run
+          const newRun = await openai.beta.threads.runs.createAndPoll(thread, {
+            assistant_id: assistantId ?? '',
+          });
+          runStatus = await openai.beta.threads.runs.retrieve(thread, newRun.id);
+          continue;
+        }
+
+        throw new Error(`Run failed after ${maxRetries} retries: ${errorDetails.error}`);
+      }
+
+      // Wait before checking status again
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
+    }
+
+    const messages = await openai.beta.threads.messages.list(thread);
+    const lastMessage = messages.data
+      .filter(
+        (message) => message.run_id === run.id && message.role === 'assistant',
+      )
+      .pop()?.content[0];
+
+    if (lastMessage?.type === 'text') {
+      response = lastMessage?.text.value;
     } else {
-      console.error('Run did not complete:', run);
+      throw new Error('No valid response message found');
     }
-  };
 
-  // Create and poll run
-  const run = await openai.beta.threads.runs.createAndPoll(thread, {
-    assistant_id: assistantId ?? '',
-  });
-  let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
-  while (runStatus.status !== 'completed') {
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
-    if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
-      functions.logger.error(`Run status is '${runStatus.status}'. Exiting.`);
-      break;
-    }
+    // Store personality analysis only if we got a valid response
+    await storePersonalityAnalysis(name, userId, threadMessages, system[0].content);
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    functions.logger.error('Error in processMessage:', {
+      error: errorMessage,
+      userId,
+      platform,
+      messageId
+    });
   }
-  const messages = await openai.beta.threads.messages.list(thread);
-  const lastMessage = messages.data
-    .filter(
-      (message) => message.run_id === run.id && message.role === 'assistant',
-    )
-    .pop()?.content[0];
-  if (lastMessage?.type === 'text') {
-    response = lastMessage?.text.value;
-  }
-  storePersonalityAnalysis(name, userId, threadMessages, system[0].content);
+
   return response;
 };
 
