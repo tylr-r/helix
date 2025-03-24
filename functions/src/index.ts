@@ -3,7 +3,15 @@ import * as functions from 'firebase-functions';
 import { onRequest } from 'firebase-functions/v2/https';
 import axios from 'axios';
 import admin from 'firebase-admin';
-import { openAiRequest } from './openai';
+import {
+  openAiRequest,
+  // openAiResponsesRequest,
+  updateAssistant,
+  createThreadMessage,
+  listThreadMessages,
+  processThreadRun,
+  createThread,
+} from './openai';
 import { logLogs, logTime, logs } from './utils';
 import {
   facebookGraphRequest,
@@ -11,31 +19,14 @@ import {
   sendMessengerReceipt,
   sendMessengerMessage,
   sendWhatsAppMessage,
-  extractWhatsAppMessageDetails
+  extractWhatsAppMessageDetails,
 } from './facebook';
 
-const openaitoken = process.env.OPENAI_API_KEY ?? '';
-const openAiOrgId = process.env.OPENAI_ORG_ID;
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 const personalityBlockId = process.env.PERSONALITY_BLOCK_ID;
 const assistantId = process.env.ASSISTANT_ID;
-
-interface RunOptions {
-  assistant_id: string;
-  model: string;
-  additional_instructions: string;
-  instructions?: string; // Optional property
-}
-
-import OpenAI from 'openai';
-const configuration = {
-  organization: openAiOrgId,
-  apiKey: openaitoken,
-};
-
-const openai = new OpenAI(configuration);
 
 admin.initializeApp();
 const database = admin.database();
@@ -83,23 +74,6 @@ const storeThreadId = async (from: string, thread: any, userName: string) => {
   } catch (error) {
     functions.logger.error(`Error storing thread id: ${error}`);
   }
-};
-
-const updateAssistant = async (instructions: string) => {
-  const start = Date.now();
-  logLogs('Updating assistant');
-  await openai.beta.assistants
-    .update(assistantId ?? '', {
-      instructions,
-    })
-    .then((res) => {
-      logTime(start, 'updateAssistant');
-      logLogs(`Assistant updated: ${JSON.stringify(res)}`);
-    })
-    .catch((error) => {
-      functions.logger.error(`Error updating assistant: ${error}`);
-    });
-  return;
 };
 
 const storePersonalityAnalysis = async (
@@ -259,14 +233,15 @@ const getThread = async (from: string, platform: string) => {
         );
         userName = userInfo?.data.data[0].name;
       }
-      const thread = await openai.beta.threads.create({
-        metadata: {
-          userId: from,
-          name: userName,
-          platform,
-        },
-      });
-      storeThreadId(from, thread, userName);
+      const metadata = {
+        userId: from,
+        name: userName,
+        platform,
+      };
+      const thread = await createThread(metadata);
+      if (thread) {
+        storeThreadId(from, thread, userName);
+      }
       logTime(start, 'getThreadId');
       return thread;
     }
@@ -324,138 +299,76 @@ const processMessage = async (
   const personalityString = `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
   logLogs(`Instructions: ${instructions}`);
-  updateAssistant(instructions);
-  await openai.beta.threads.messages.create(thread, {
-    role: 'user',
-    content: userMessage,
-    metadata: {
-      messageId,
-    },
-  });
 
-  // Check if another message was added after processing
-  const getThread = await openai.beta.threads.messages.list(thread);
-  const threadMessages = getThread?.data;
-  let lastMessageId = (threadMessages[0]?.metadata as any)?.messageId as
-    | string
-    | null;
-  // add delay to wait for message to be added
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-  if (platform === 'messenger') {
-    const messengerMessages = await facebookGraphRequest(
-      `me/conversations?fields=messages.limit(1){created_time,from,message}&user_id=${userId}&`,
-      {},
-      'Error while getting Messenger name',
-      'GET',
-    );
-    lastMessageId = await messengerMessages?.data?.data[0]?.messages?.data[0]
-      ?.id;
-  } else {
-    functions.logger.warn(`Using thread message id: ${lastMessageId}`);
-  }
-  if (lastMessageId) {
-    if (lastMessageId !== messageId) {
-      functions.logger.warn('New message was added, exiting');
-      return '';
-    }
-    logLogs(`No new messages, continuing...`);
-  }
-  const runOptions: RunOptions = {
-    assistant_id: assistantId ?? '',
-    model: 'gpt-4.5-preview',
-    additional_instructions: customReminder,
-  };
-  if (instructions != '') {
-    runOptions.instructions = instructions;
-  }
+  // Update assistant with instructions
+  await updateAssistant(instructions, assistantId ?? '');
 
-  try {
-    const run = await openai.beta.threads.runs.createAndPoll(thread, {
-      assistant_id: assistantId ?? '',
-    });
+  const isThread = true;
+  // Start thread section
 
-    let runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
-    let retryCount = 0;
-    const maxRetries = 3;
-    const maxWaitTime = 30000; // 30 seconds
-    const startTime = Date.now();
+  if (isThread) {
+    // Create a message in the thread
+    await createThreadMessage(thread, userMessage, messageId);
 
-    while (runStatus.status !== 'completed') {
-      logLogs(`Run status: ${runStatus.status}`);
-
-      // Check if we've exceeded max wait time
-      if (Date.now() - startTime > maxWaitTime) {
-        throw new Error('Run timed out after 30 seconds');
-      }
-
-      // Handle error states
-      if (['failed', 'cancelled', 'expired'].includes(runStatus.status)) {
-        const errorDetails = {
-          status: runStatus.status,
-          error: runStatus.last_error?.message || 'Unknown error',
-          code: runStatus.last_error?.code || 'NO_CODE',
-          timestamp: new Date().toISOString(),
-        };
-
-        functions.logger.error('Run failed:', errorDetails);
-
-        // If we haven't exceeded max retries, try again
-        if (retryCount < maxRetries) {
-          logLogs(`Retrying run (attempt ${retryCount + 1}/${maxRetries})`);
-          retryCount++;
-
-          // Create a new run
-          const newRun = await openai.beta.threads.runs.createAndPoll(thread, {
-            assistant_id: assistantId ?? '',
-          });
-          runStatus = await openai.beta.threads.runs.retrieve(
-            thread,
-            newRun.id,
-          );
-          continue;
-        }
-
-        throw new Error(
-          `Run failed after ${maxRetries} retries: ${errorDetails.error}`,
-        );
-      }
-
-      // Wait before checking status again
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      runStatus = await openai.beta.threads.runs.retrieve(thread, run.id);
-    }
-
-    const messages = await openai.beta.threads.messages.list(thread);
-    const lastMessage = messages.data
-      .filter(
-        (message) => message.run_id === run.id && message.role === 'assistant',
-      )
-      .pop()?.content[0];
-
-    if (lastMessage?.type === 'text') {
-      response = lastMessage?.text.value;
+    // Check if another message was added after processing
+    const threadMessagesResponse = await listThreadMessages(thread);
+    const threadMessages = threadMessagesResponse?.data || [];
+    let lastMessageId = (threadMessages[0]?.metadata as any)?.messageId as
+      | string
+      | null;
+    // add delay to wait for message to be added
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    if (platform === 'messenger') {
+      const messengerMessages = await facebookGraphRequest(
+        `me/conversations?fields=messages.limit(1){created_time,from,message}&user_id=${userId}&`,
+        {},
+        'Error while getting Messenger name',
+        'GET',
+      );
+      lastMessageId = await messengerMessages?.data?.data[0]?.messages?.data[0]
+        ?.id;
     } else {
-      throw new Error('No valid response message found');
+      functions.logger.warn(`Using thread message id: ${lastMessageId}`);
+    }
+    if (lastMessageId) {
+      if (lastMessageId !== messageId) {
+        functions.logger.warn('New message was added, exiting');
+        return '';
+      }
+      logLogs(`No new messages, continuing...`);
     }
 
-    // Store personality analysis only if we got a valid response
-    await storePersonalityAnalysis(
-      name,
-      userId,
-      threadMessages,
-      system[0].content,
-    );
-  } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : 'Unknown error occurred';
-    functions.logger.error('Error in processMessage:', {
-      error: errorMessage,
-      userId,
-      platform,
-      messageId,
-    });
-  }
+    try {
+      // Process thread run
+      response =
+        (await processThreadRun(
+          'gpt-4.5-preview',
+          thread,
+          assistantId ?? '',
+          instructions,
+          customReminder,
+        )) || 'Sorry, I am having troubles lol';
 
+      // Store personality analysis only if we got a valid response
+      await storePersonalityAnalysis(
+        name,
+        userId,
+        threadMessages,
+        system[0].content,
+      );
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error occurred';
+      functions.logger.error('Error in processMessage:', {
+        error: errorMessage,
+        userId,
+        platform,
+        messageId,
+      });
+    }
+  } else {
+    // to add responses request here: response = await openAiResponsesRequest();
+  }
   return response;
 };
 

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import * as functions from 'firebase-functions';
 import axios from 'axios';
 import { logLogs, logTime } from './utils';
@@ -36,7 +37,10 @@ export const facebookGraphRequest = async (
 };
 
 // Send WhatsApp receipt
-export const sendWhatsAppReceipt = async (phone_number_id: string, msgId: string) => {
+export const sendWhatsAppReceipt = async (
+  phone_number_id: string,
+  msgId: string,
+) => {
   await facebookGraphRequest(
     `${phone_number_id}/messages?`,
     {
@@ -50,7 +54,10 @@ export const sendWhatsAppReceipt = async (phone_number_id: string, msgId: string
 };
 
 // Send Messenger receipt
-export const sendMessengerReceipt = async (userId: string, sender_action: string) => {
+export const sendMessengerReceipt = async (
+  userId: string,
+  sender_action: string,
+) => {
   await facebookGraphRequest(
     'me/messages?',
     {
@@ -119,4 +126,4 @@ export const extractWhatsAppMessageDetails = (req: {
     phoneNumberId,
     msgId,
   };
-}; 
+};
