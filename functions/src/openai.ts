@@ -73,4 +73,54 @@ export const openAiRequest = async (
     functions.logger.error(`Error sending to OpenAI: ${error}`);
   }
   return 'lol';
+};
+
+export const openAiResponsesRequest = async (
+  input: any[],
+  model: string = 'gpt-4o',
+  max_output_tokens: number = 2048,
+  temperature: number = 1,
+  tools: any[] = [],
+  reasoning: boolean = false,
+  reasoningEffort: 'low' | 'medium' | 'high' = 'low',
+) => {
+  const start = Date.now();
+  try {
+    logLogs('Starting openai responses API call');
+    functions.logger.debug(
+      `responses call: ${JSON.stringify({
+        model,
+        input,
+        max_output_tokens,
+        temperature,
+        tools,
+      })}`,
+    );
+    
+    const response = await openai.responses.create({
+      model,
+      input,
+      text: {
+        format: {
+          type: 'text'
+        }
+      },
+      reasoning: {
+        effort: reasoningEffort,
+      },
+      tools,
+      temperature,
+      max_output_tokens,
+      top_p: 1,
+      store: true
+    }).catch((error) => {
+      functions.logger.error(`Error sending to OpenAI Responses API: ${error}`);
+    });
+    
+    await logTime(start, 'openAiResponsesRequest');
+    return response;
+  } catch (error) {
+    functions.logger.error(`Error sending to OpenAI Responses API: ${error}`);
+  }
+  return 'Error in responses API';
 }; 

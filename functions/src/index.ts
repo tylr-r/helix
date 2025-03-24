@@ -5,13 +5,13 @@ import axios from 'axios';
 import admin from 'firebase-admin';
 import { openAiRequest } from './openai';
 import { logLogs, logTime, logs } from './utils';
-import { 
-  facebookGraphRequest, 
-  sendWhatsAppReceipt, 
-  sendMessengerReceipt, 
-  sendMessengerMessage, 
-  sendWhatsAppMessage, 
-  extractWhatsAppMessageDetails 
+import {
+  facebookGraphRequest,
+  sendWhatsAppReceipt,
+  sendMessengerReceipt,
+  sendMessengerMessage,
+  sendWhatsAppMessage,
+  extractWhatsAppMessageDetails
 } from './facebook';
 
 const openaitoken = process.env.OPENAI_API_KEY ?? '';
