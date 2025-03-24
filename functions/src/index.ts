@@ -3,6 +3,8 @@ import * as functions from 'firebase-functions';
 import { onRequest } from 'firebase-functions/v2/https';
 import axios from 'axios';
 import admin from 'firebase-admin';
+import { openAiRequest } from './openai';
+import { logLogs, logTime, logs } from './utils';
 
 const openaitoken = process.env.OPENAI_API_KEY ?? '';
 const openAiOrgId = process.env.OPENAI_ORG_ID;
@@ -30,18 +32,6 @@ const openai = new OpenAI(configuration);
 
 admin.initializeApp();
 const database = admin.database();
-
-// aggregate logs together
-const logs: string[] = [];
-const logLogs = (log: any) => {
-  functions.logger.log(log);
-  logs.push(log);
-};
-
-const logTime = async (start: number, label: any) => {
-  const end = Date.now();
-  logLogs(`Time to ${label}: ${end - start}ms`);
-};
 
 const currentTime = new Date().toLocaleString('en-US', {
   timeZone: 'America/Los_Angeles',
@@ -184,11 +174,13 @@ const storeThreadId = async (from: string, thread: any, userName: string) => {
 const updateAssistant = async (instructions: string) => {
   const start = Date.now();
   logLogs('Updating assistant');
-  await openai.beta.assistants.update(assistantId ?? '', {
-    instructions,
-  })
+  await openai.beta.assistants
+    .update(assistantId ?? '', {
+      instructions,
+    })
     .then((res) => {
       logTime(start, 'updateAssistant');
+      logLogs(`Assistant updated: ${JSON.stringify(res)}`);
     })
     .catch((error) => {
       functions.logger.error(`Error updating assistant: ${error}`);
@@ -223,7 +215,9 @@ const storePersonalityAnalysis = async (
       })
       .reverse()
       .slice(-6);
-    functions.logger.log(`message with ${name}. recent messages: ${JSON.stringify(messages)}`);
+    functions.logger.log(
+      `message with ${name}. recent messages: ${JSON.stringify(messages)}`,
+    );
     if (!userInfoSnapshot) {
       return;
     }
@@ -372,67 +366,6 @@ const getThread = async (from: string, platform: string) => {
   }
 };
 
-const openAiRequest = async (
-  messages: any[],
-  model: string,
-  max_tokens?: number,
-  temperature?: number,
-  function_call?: boolean,
-  ai_functions?: any[],
-) => {
-  const start = Date.now();
-  let completion;
-  try {
-    if (function_call && ai_functions !== undefined) {
-      logLogs('Starting openai function call');
-      const name = ai_functions[0].name;
-      completion = await openai.chat.completions
-        .create({
-          model: 'gpt-4.5-preview',
-          messages,
-          max_tokens,
-          temperature,
-          function_call: {
-            name,
-          },
-          functions: ai_functions,
-        })
-        .catch((error) => {
-          functions.logger.error(`Error sending to OpenAI: ${error}`);
-        });
-      functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
-      const result = completion?.choices[0].message.function_call.arguments;
-      logTime(start, 'openAiRequest');
-      return result;
-    } else {
-      logLogs('Starting normal openai call');
-      functions.logger.debug(
-        `normal call: ${JSON.stringify({
-          model,
-          messages,
-          max_tokens,
-          temperature,
-        })}`,
-      );
-      completion = await openai.chat.completions
-        .create({
-          model,
-          messages,
-          max_tokens,
-          temperature,
-        })
-        .catch((error) => {
-          functions.logger.error(`Error sending to OpenAI: ${error}`);
-        });
-      logTime(start, 'openAiRequest');
-      return completion?.choices?.[0]?.message?.content;
-    }
-  } catch (error) {
-    functions.logger.error(`Error sending to OpenAI: ${error}`);
-  }
-  return 'lol';
-};
-
 const extractWhatsAppMessageDetails = (req: {
   body: { entry: { changes: { value: any }[] }[] };
 }) => {
@@ -495,8 +428,7 @@ const processMessage = async (
     .once('value');
   const personalitySnapshot = userDB.val();
   logLogs(`recent thoughts: ${JSON.stringify(personalitySnapshot)}`);
-  const personalityString =
-    `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
+  const personalityString = `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
   logLogs(`Instructions: ${instructions}`);
   updateAssistant(instructions);
@@ -569,7 +501,7 @@ const processMessage = async (
           status: runStatus.status,
           error: runStatus.last_error?.message || 'Unknown error',
           code: runStatus.last_error?.code || 'NO_CODE',
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
         };
 
         functions.logger.error('Run failed:', errorDetails);
@@ -583,11 +515,16 @@ const processMessage = async (
           const newRun = await openai.beta.threads.runs.createAndPoll(thread, {
             assistant_id: assistantId ?? '',
           });
-          runStatus = await openai.beta.threads.runs.retrieve(thread, newRun.id);
+          runStatus = await openai.beta.threads.runs.retrieve(
+            thread,
+            newRun.id,
+          );
           continue;
         }
 
-        throw new Error(`Run failed after ${maxRetries} retries: ${errorDetails.error}`);
+        throw new Error(
+          `Run failed after ${maxRetries} retries: ${errorDetails.error}`,
+        );
       }
 
       // Wait before checking status again
@@ -609,15 +546,20 @@ const processMessage = async (
     }
 
     // Store personality analysis only if we got a valid response
-    await storePersonalityAnalysis(name, userId, threadMessages, system[0].content);
-
+    await storePersonalityAnalysis(
+      name,
+      userId,
+      threadMessages,
+      system[0].content,
+    );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error occurred';
     functions.logger.error('Error in processMessage:', {
       error: errorMessage,
       userId,
       platform,
-      messageId
+      messageId,
     });
   }
 
