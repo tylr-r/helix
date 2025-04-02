@@ -1,162 +1,129 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tylr</title>
   <style>
+    :root {
+      --light-bg: #f7f7f7;
+      --light-text: #333;
+      --dark-bg: #0d0d0d;
+      --dark-text: #f0f0f0;
+      --muted: #888;
+    }
+
+    [data-theme='dark'] {
+      --bg: var(--dark-bg);
+      --text: var(--dark-text);
+    }
+
+    [data-theme='light'] {
+      --bg: var(--light-bg);
+      --text: var(--light-text);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
     body {
-      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: system-ui, sans-serif;
       display: flex;
-      justify-content: flex-start;
+      flex-direction: column;
+      height: 100vh;
+      align-items: center;
+      justify-content: center;
+      gap: 32px;
+      padding-bottom: 80px;
+      /* Reserve space for the absolute footer */
+    }
+
+    #container {
+      display: flex;
       flex-direction: column;
       align-items: center;
-      height: 100vh;
-      width: 100%;
-      margin: 0;
-      background-color: var(--background-color);
-      color: var(--text-color);
+      justify-content: center;
+      gap: 36px;
     }
 
-    a {
-      color: var(--text-color);
-      text-decoration: underline;
-    }
-
-    p {
-      color: var(--text-color);
+    #logo img {
+      padding-top: 12px;
+      width: 240px;
+      max-width: 80vw;
+      filter: brightness(0.7) opacity(0.7);
     }
 
     #links {
       display: flex;
-      flex-direction: row;
-      justify-content: center;
-      align-items: flex-start;
-      gap: 24px;
-      height: 100%;
-      width: 100%;
+      gap: 32px;
     }
 
-    .logo_link {
-      position: relative;
-      padding: 12px;
-      width: 48px;
-      height: auto;
-      max-width: 100px;
+    .logo_link img {
+      width: 42px;
+      height: 42px;
+      object-fit: contain;
+      transition: transform 0.2s ease;
     }
 
-    #logo {
-      width: 60%;
-      height: auto;
-    }
-
-    .dark-fill {
-      fill: var(--de-emph-color);
-    }
-
-    footer p,
-    a {
-      color: var(--de-emph-color) !important;
-    }
-
-    img {
-      max-width: 100%;
-      height: auto;
+    .logo_link img:hover {
+      transform: scale(1.1);
     }
 
     footer {
-      position: relative;
+      position: absolute;
       bottom: 0;
-      margin-bottom: 8px;
-      width: 100%;
-      height: auto;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      flex-direction: row;
-      color: var(--de-emph-color) !important;
+      padding: 16px 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    footer a {
+      color: var(--muted);
+      text-decoration: underline;
     }
   </style>
-
-  <style>
-    :root {
-      --light-bg-color: #f0f0f0;
-      --light-text-color: #707070;
-      --dark-bg-color: #1c1c1c;
-      --dark-text-color: #dcdcdc;
-      --de-emph-color: #a5a5a5;
-    }
-
-    [data-theme='dark'] {
-      --background-color: var(--dark-bg-color);
-      --text-color: var(--dark-text-color);
-    }
-
-    body {
-      background-color: var(--background-color);
-      color: var(--text-color);
-    }
-  </style>
-
   <script>
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    } else {
-      document.documentElement.setAttribute('data-theme', 'light');
-    }
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
   </script>
 </head>
 
 <body>
-  <!-- Centered page -->
-  <div id="logo">
-    <svg version="1.1" id="tylr_logo" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-      x="0px" y="0px" viewBox="0 0 3946.52 2219.92" style="enable-background:new 0 0 3946.52 2219.92;"
-      xml:space="preserve">
-      <g>
-        <path class="dark-fill" d="M1706.9,1293.35h-93.6V956.52h-136.22v-80.48h366.05v80.48H1706.9V1293.35z" />
-        <path class="dark-fill" d="M1823.66,1402.95c0,0,36.87-87.53,39.26-92.55l8.94-18.78l-126.39-301.66h96.88l73.92,200.31l73.63-200.31h92.41
-          l-138.01,329.08c-11.53,27.82-36.8,85.88-36.8,85.88L1823.66,1402.95z" />
-        <path class="dark-fill" d="M2104.77,1292.55h-88.23l164.85-415.51h88.23L2104.77,1292.55z" />
-        <path class="dark-fill" d="M2348.22,1293.35h-88.23V990.5h80.18l2.09,47.99c10.33-15.5,24.39-28.22,42.18-38.15c17.78-9.94,37.01-14.91,57.68-14.91
-          c4.97,0,10.29,0.3,15.95,0.89c5.66,0.6,9.88,1.19,12.67,1.79v79.59c-3.38-0.6-7.3-1.05-11.78-1.34c-4.47-0.3-8.7-0.45-12.67-0.45
-          c-31.8,0-56.09,9.89-72.88,29.66c-16.8,19.77-25.19,45.66-25.19,77.65V1293.35z" />
-      </g>
-    </svg>
-  </div>
-
-
-  <!-- horizontal links -->
-  <div id="links">
-    <!-- Button that links to messenger -->
-    <div class="logo_link" id="messenger_logo">
-      <a href="https://m.me/tylrcreative" target="_blank">
-        <img
-          src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/be/Facebook_Messenger_logo_2020.svg/2048px-Facebook_Messenger_logo_2020.svg.png" />
-      </a>
+  <div id="container">
+    <div id="logo">
+      <img src="./images/tylr_logo.svg" alt="Tylr Logo" />
     </div>
-    <!-- Button that links to instagram -->
-    <div class="logo_link" id="instagram_logo">
-      <a href="https://www.instagram.com/tylr_r/" target="_blank">
-        <img src="https://static.xx.fbcdn.net/rsrc.php/v3/y_/r/2wPYyq9Ejn4.png" />
-      </a>
-    </div>
-    <!-- Button that links to whatsapp -->
-    <div class="logo_link" id="whatsapp_logo">
-      <a href="https://wa.me/message/4HK74L3CLAAVE1" target="_blank">
-        <img
-          src="https://upload.wikimedia.org/wikipedia/commons/thumb/1/19/WhatsApp_logo-color-vertical.svg/2048px-WhatsApp_logo-color-vertical.svg.png" />
-      </a>
+    <div id="links">
+      <div class="logo_link">
+        <a href="https://m.me/tylrcreative" target="_blank">
+          <img src="./images/Messenger_logo.svg" alt="Messenger" />
+        </a>
+      </div>
+      <div class="logo_link">
+        <a href="https://www.instagram.com/tylr_r/" target="_blank">
+          <img src="./images/Instagram_logo.svg" alt="Instagram" />
+        </a>
+      </div>
+      <div class="logo_link">
+        <a href="https://wa.me/message/4HK74L3CLAAVE1" target="_blank">
+          <img src="./images/Whatsapp_logo.svg" alt="WhatsApp" />
+        </a>
+      </div>
     </div>
   </div>
 
   <footer>
-    <p style="margin-right: 8px;">© 2023 Tylr |
-      <a href="/privacy-policy.html" target="_blank">Privacy Policy</a>
+    <p>© 2023-
+      <script>document.write(new Date().getFullYear())</script> Tylr | <a href="/privacy-policy.html"
+        target="_blank">Privacy Policy</a>
     </p>
   </footer>
-
 </body>
 
 </html>
