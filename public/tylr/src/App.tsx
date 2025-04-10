@@ -4,8 +4,50 @@ import Messenger_logo from './assets/Messenger_logo.svg';
 import WhatsApp_logo from './assets/WhatsApp_logo.svg';
 import Instagram_logo from './assets/Instagram_logo.svg';
 import github_mark from './assets/github-mark.svg';
+import { useEffect } from 'react';
 
 function App() {
+  useEffect(() => {
+    // Apply theme based on user preference
+    const prefersDark = window.matchMedia(
+      '(prefers-color-scheme: dark)',
+    ).matches;
+    const theme = prefersDark ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+
+    // Set current year
+    const currentYearElement = document.getElementById('current-year');
+    if (currentYearElement) {
+      currentYearElement.textContent = new Date().getFullYear().toString();
+    }
+
+    // On load animation
+    setTimeout(() => {
+      const logoContainer = document.getElementById('logo-container');
+      if (logoContainer) {
+        logoContainer.classList.add('animate');
+      }
+    }, 800);
+  }, []);
+
+  const handleHelixClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    e.preventDefault();
+    // Toggle active state on the button
+    const helixButton = document.getElementById('helix') as HTMLAnchorElement;
+    helixButton.classList.toggle('active');
+
+    // Toggle visibility of chat links
+    const chatLinks = document.getElementById('chat-links');
+    if (chatLinks) {
+      chatLinks.classList.toggle('visible');
+    }
+
+    // Fallback navigation mechanism
+    if (!helixButton.classList.contains('active')) {
+      window.location.href = helixButton.href;
+    }
+  };
+
   return (
     <>
       <div id="logo-container">
@@ -17,13 +59,23 @@ function App() {
       </div>
 
       <div id="main-tiles">
-        <a href="#" id="helix" className="button">
-          <span>helix project</span>
+        <a href="#" id="helix" className="button" onClick={handleHelixClick}>
+          <span>helix-project</span>
         </a>
-        <a href="#" id="resume" className="button" aria-disabled="true">
+        <a
+          href="#"
+          id="resume"
+          className="button disabled"
+          aria-disabled="true"
+        >
           <span>resumé</span>
         </a>
-        <a href="#" id="portfolio" className="button" aria-disabled="true">
+        <a
+          href="#"
+          id="portfolio"
+          className="button disabled"
+          aria-disabled="true"
+        >
           <span>portfolio</span>
         </a>
       </div>
