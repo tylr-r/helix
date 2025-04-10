@@ -6,6 +6,14 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Ty/r</title>
   <link rel="stylesheet" href="./css/styles.css">
+  <script>
+    // Apply theme based on user preference on page load
+    (function () {
+      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      const theme = prefersDark ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
+  </script>
 </head>
 
 <body>
@@ -46,11 +54,6 @@
   <script>
     // Set current year
     document.getElementById('current-year').textContent = new Date().getFullYear();
-
-    // Detect preferred color scheme and set theme
-    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const theme = prefersDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
 
     // On load animation
     window.addEventListener('DOMContentLoaded', () => {
