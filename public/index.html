@@ -7,35 +7,52 @@
   <title>Ty/r</title>
   <style>
     :root {
+      /* Base theme (light mode) */
       --bg: hsl(210, 13%, 91%);
       --card-bg: hsl(210, 13%, 91%);
       --text: hsl(0, 0%, 15%);
       --active-text: hsl(0, 0%, 47%);
-      --accent: hsl(239, 85%, 67%);
       --muted: hsl(0, 0%, 67%);
-      --dark-bg: hsl(0, 0%, 7%);
-      --dark-card-bg: hsl(0, 0%, 12%);
-      --dark-text: hsl(0, 0%, 90%);
+      --accent: hsl(239, 85%, 67%);
       --slash: hsl(0, 0%, 13%);
       --shadow-color-dark: hsl(210, 7%, 79%);
       --shadow-color-light: hsl(0, 0%, 100%);
       --glass-stroke: hsla(0, 0%, 100%, 0.2);
-      --animation-duration: 1.8s;
       --hover-bg: hsla(0, 0%, 100%, 0.3);
+
+      /* Dark theme overrides */
+      --bg-dark: hsl(0, 0%, 7%);
+      --card-bg-dark: hsl(0, 0%, 12%);
+      --text-dark: hsl(0, 0%, 90%);
+      --active-text-dark: hsl(0, 0%, 63%);
+      --muted-dark: hsl(0, 0%, 42%);
+      --accent-dark: hsl(239, 100%, 74%);
+      --slash-dark: hsl(239, 100%, 74%);
+      --shadow-color-dark-dark: hsla(0, 0%, 0%, 0.5);
+      --shadow-color-light-dark: hsla(0, 0%, 100%, 0.1);
+      --glass-stroke-dark: hsla(0, 0%, 100%, 0);
+      --hover-bg-dark: hsla(0, 0%, 20%, 0.5);
+
+      /* Animation properties */
+      --animation-duration-long: 1.8s;
+      --animation-duration-short: .3s;
+      --animation-smoothness: cubic-bezier(0, 1.5, .31, .8);
+      --animation-long: var(--animation-duration-long) var(--animation-smoothness);
+      --animation-short: var(--animation-duration-short) var(--animation-smoothness);
     }
 
     [data-theme='dark'] {
-      --bg: var(--dark-bg);
-      --card-bg: var(--dark-card-bg);
-      --text: var(--dark-text);
-      --slash: hsl(239, 100%, 74%);
-      --active-text: hsl(0, 0%, 63%);
-      --muted: hsl(0, 0%, 36%);
-      --shadow-color-dark: hsla(0, 0%, 0%, 0.5);
-      --shadow-color-light: hsla(0, 0%, 100%, 0.1);
-      --glass-stroke: hsla(0, 0%, 100%, 0.1);
-      --accent: hsl(239, 100%, 74%);
-      --hover-bg: hsla(0, 0%, 20%, 0.5);
+      --bg: var(--bg-dark);
+      --card-bg: var(--card-bg-dark);
+      --text: var(--text-dark);
+      --active-text: var(--active-text-dark);
+      --muted: var(--muted-dark);
+      --accent: var(--accent-dark);
+      --slash: var(--slash-dark);
+      --shadow-color-dark: var(--shadow-color-dark-dark);
+      --shadow-color-light: var(--shadow-color-light-dark);
+      --glass-stroke: var(--glass-stroke-dark);
+      --hover-bg: var(--hover-bg-dark);
     }
 
     * {
@@ -80,14 +97,14 @@
     .left-part {
       margin-right: 2px;
       display: inline-block;
-      transition: transform var(--animation-duration) cubic-bezier(0, 1.5, .31, .8);
+      transition: transform var(--animation-long);
       transform: translateX(0);
     }
 
     .right-part {
       margin-left: 3px;
       display: inline-block;
-      transition: transform var(--animation-duration) cubic-bezier(0, 1.5, .31, .8);
+      transition: transform var(--animation-long);
       transform: translateX(0);
     }
 
@@ -97,7 +114,7 @@
       margin-left: -13px;
       transform: scale(0) translateY(-20px) translatex(30px);
       transform-origin: top;
-      transition: transform .3s cubic-bezier(0, 1.29, .72, .93);
+      transition: transform var(--animation-duration-short) cubic-bezier(0, 1.29, .72, .93);
       z-index: 2;
       -webkit-text-stroke: var(--text) 2px;
     }
@@ -130,7 +147,7 @@
       -webkit-backdrop-filter: blur(10px);
       border: 1px solid hsla(0, 0%, 100%, 0);
       border-radius: 50px;
-      transition: all var(--animation-duration) cubic-bezier(0, 1.5, .31, .8);
+      transition: all var(--animation-long);
     }
 
     .button-raised {
@@ -147,15 +164,12 @@
     }
 
     .button:active {
-      background-color: hsla(0, 0%, 100%, 0.2);
       border-color: var(--glass-stroke);
       margin: 0 4px;
-
     }
 
     .button.active {
       color: var(--active-text);
-      background-color: hsla(0, 0%, 100%, 0.2);
       border-color: var(--glass-stroke);
       box-shadow: inset 3px 3px 6px var(--shadow-color-dark),
         inset -3px -3px 6px var(--shadow-color-light);
@@ -174,7 +188,7 @@
       opacity: 0;
       visibility: hidden;
       transform: translateY(20px);
-      transition: opacity 0.3s ease, visibility 0.3s ease, transform 0.3s ease;
+      transition: all var(--animation-duration-short) ease;
     }
 
     #chat-links.visible {
@@ -186,7 +200,7 @@
     .social-link img {
       width: 36px;
       height: 36px;
-      transition: transform 0.3s ease, opacity 0.3s ease, filter 0.3s ease;
+      transition: all var(--animation-long);
     }
 
     .social-link img:hover {
@@ -203,11 +217,16 @@
     footer a {
       color: var(--muted);
       text-decoration: none;
-      transition: color 0.2s ease;
+      transition: all var(--animation-long);
     }
 
     footer a:hover {
       color: var(--accent);
+    }
+
+    /* Change GitHub logo color in dark mode using a filter */
+    [data-theme='dark'] .github-logo {
+      filter: invert(1);
     }
   </style>
 </head>
@@ -239,7 +258,7 @@
       <img src="./images/WhatsApp_logo.svg" alt="Chat Tylr on WhatsApp">
     </a>
     <a class="social-link" href="https://github.com/tylr-r/helix" target="_blank" rel="noopener noreferrer">
-      <img src="./images/github-mark.svg" alt="View project on GitHub">
+      <img src="./images/github-mark.svg" alt="View project on GitHub" class="github-logo">
     </a>
   </div>
 
