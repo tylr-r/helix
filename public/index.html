@@ -9,7 +9,6 @@
     :root {
       /* Base theme (light mode) */
       --bg: hsl(210, 13%, 91%);
-      --card-bg: hsl(210, 13%, 91%);
       --text: hsl(0, 0%, 15%);
       --active-text: hsl(0, 0%, 47%);
       --muted: hsl(0, 0%, 67%);
@@ -18,18 +17,18 @@
       --shadow-color-dark: hsl(210, 7%, 79%);
       --shadow-color-light: hsl(0, 0%, 100%);
       --glass-stroke: hsla(0, 0%, 100%, 0.2);
+      --border-color: hsla(0, 0%, 100%, 0);
       --hover-bg: hsla(0, 0%, 100%, 0.3);
 
       /* Dark theme overrides */
-      --bg-dark: hsl(0, 0%, 7%);
-      --card-bg-dark: hsl(0, 0%, 12%);
+      --bg-dark: hsl(240, 2%, 13%);
       --text-dark: hsl(0, 0%, 90%);
       --active-text-dark: hsl(0, 0%, 63%);
       --muted-dark: hsl(0, 0%, 42%);
       --accent-dark: hsl(239, 100%, 74%);
       --slash-dark: hsl(239, 100%, 74%);
-      --shadow-color-dark-dark: hsla(0, 0%, 0%, 0.5);
-      --shadow-color-light-dark: hsla(0, 0%, 100%, 0.1);
+      --shadow-color-dark-dark: hsla(0, 0%, 0%, 0.7);
+      --shadow-color-light-dark: hsla(0, 0%, 100%, 0.07);
       --glass-stroke-dark: hsla(0, 0%, 100%, 0);
       --hover-bg-dark: hsla(0, 0%, 20%, 0.5);
 
@@ -43,7 +42,6 @@
 
     [data-theme='dark'] {
       --bg: var(--bg-dark);
-      --card-bg: var(--card-bg-dark);
       --text: var(--text-dark);
       --active-text: var(--active-text-dark);
       --muted: var(--muted-dark);
@@ -53,6 +51,11 @@
       --shadow-color-light: var(--shadow-color-light-dark);
       --glass-stroke: var(--glass-stroke-dark);
       --hover-bg: var(--hover-bg-dark);
+    }
+
+    /* Change GitHub logo color in dark mode using a filter */
+    [data-theme='dark'] .github-logo {
+      filter: invert(1);
     }
 
     * {
@@ -116,7 +119,7 @@
       transform-origin: top;
       transition: transform var(--animation-duration-short) cubic-bezier(0, 1.29, .72, .93);
       z-index: 2;
-      -webkit-text-stroke: var(--text) 2px;
+      -webkit-text-stroke: 2px var(--text);
     }
 
     .animate .left-part {
@@ -140,12 +143,11 @@
     .button {
       display: flex;
       padding: 12px;
-      background-color: var(--hover-bg);
+      background-color: var(--bg);
       color: var(--muted);
       text-decoration: none;
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
-      border: 1px solid hsla(0, 0%, 100%, 0);
       border-radius: 50px;
       transition: all var(--animation-long);
     }
@@ -157,23 +159,18 @@
 
     .button:hover {
       color: var(--text);
-      background-color: var(--card-bg);
       box-shadow: 5px 5px 10px var(--shadow-color-dark),
         -5px -5px 10px var(--shadow-color-light);
-      margin: 0 4px;
-    }
-
-    .button:active {
-      border-color: var(--glass-stroke);
-      margin: 0 4px;
     }
 
     .button.active {
       color: var(--active-text);
-      border-color: var(--glass-stroke);
       box-shadow: inset 3px 3px 6px var(--shadow-color-dark),
         inset -3px -3px 6px var(--shadow-color-light);
-      margin: 0 4px;
+    }
+
+    .button.active:hover {
+      background-color: var(--hover-bg);
     }
 
     .button.disabled {
@@ -223,11 +220,6 @@
     footer a:hover {
       color: var(--accent);
     }
-
-    /* Change GitHub logo color in dark mode using a filter */
-    [data-theme='dark'] .github-logo {
-      filter: invert(1);
-    }
   </style>
 </head>
 
@@ -242,12 +234,12 @@
     <a href="#" id="helix" class="button">
       <span>helix project</span>
     </a>
-    <a href="#" id="resume" class="button">
+    <a href="#" id="resume" class="button disabled">
       <span>resumé</span>
     </a>
-    <div id="portfolio" class="button disabled">
+    <a href="#" id="portfolio" class="button disabled">
       <span>portfolio</span>
-    </div>
+    </a>
   </div>
 
   <div id="chat-links">
@@ -263,7 +255,7 @@
   </div>
 
   <footer>
-    © <span id="current-year"></span> Tyler Robinson | <a href="/privacy-policy.html">Privacy Policy</a>
+    © <span id="current-year">2025</span> Tyler Robinson | <a href="/privacy-policy.html">Privacy Policy</a>
   </footer>
 
   <script>
@@ -278,23 +270,9 @@
     // On load animation
     window.addEventListener('DOMContentLoaded', () => {
       const logoContainer = document.getElementById('logo-container');
-      const buttons = document.querySelectorAll('.button');
-
       setTimeout(() => {
         logoContainer.classList.add('animate');
       }, 800);
-
-      setTimeout(() => {
-        buttons.forEach(button => button.classList.add('button-raised'));
-      }, 2000);
-    });
-
-    // Reset and replay animation on click
-    document.getElementById('logo-container').addEventListener('click', function () {
-      this.classList.remove('animate');
-      setTimeout(() => {
-        this.classList.add('animate');
-      }, 50);
     });
 
     // Toggle chat links visibility when helix button is clicked
@@ -305,6 +283,10 @@
       // Toggle visibility of chat links
       const chatLinks = document.getElementById('chat-links');
       chatLinks.classList.toggle('visible');
+      // Fallback navigation mechanism
+      if (!this.classList.contains('active')) {
+        window.location.href = this.href;
+      }
     });
   </script>
 </body>
