@@ -2,11 +2,13 @@ import './App.css';
 import Footer from './Footer';
 import Messenger_logo from './assets/Messenger_logo.svg';
 import WhatsApp_logo from './assets/WhatsApp_logo.svg';
-import Instagram_logo from './assets/Instagram_logo.svg';
 import github_mark from './assets/github-mark.svg';
-import { useEffect } from 'react';
+import ToggleButton from './ToggleButton';
+import { useEffect, useState } from 'react';
 
 function App() {
+  const [isHelixLinksActive, setIsHelixLinksActive] = useState(false);
+
   useEffect(() => {
     // Apply theme based on user preference
     const prefersDark = window.matchMedia(
@@ -30,24 +32,6 @@ function App() {
     }, 800);
   }, []);
 
-  const handleHelixClick = (e: React.MouseEvent<HTMLAnchorElement>) => {
-    e.preventDefault();
-    // Toggle active state on the button
-    const helixButton = document.getElementById('helix') as HTMLAnchorElement;
-    helixButton.classList.toggle('active');
-
-    // Toggle visibility of chat links
-    const chatLinks = document.getElementById('chat-links');
-    if (chatLinks) {
-      chatLinks.classList.toggle('visible');
-    }
-
-    // Fallback navigation mechanism
-    if (!helixButton.classList.contains('active')) {
-      window.location.href = helixButton.href;
-    }
-  };
-
   return (
     <>
       <div id="logo-container">
@@ -59,28 +43,16 @@ function App() {
       </div>
 
       <div id="main-tiles">
-        <a href="#" id="helix" className="button" onClick={handleHelixClick}>
-          <span>helix-project</span>
-        </a>
-        <a
-          href="#"
-          id="resume"
-          className="button disabled"
-          aria-disabled="true"
-        >
-          <span>resumé</span>
-        </a>
-        <a
-          href="#"
-          id="portfolio"
-          className="button disabled"
-          aria-disabled="true"
-        >
-          <span>portfolio</span>
-        </a>
+        <ToggleButton
+          label="helix project"
+          id="helix-button"
+          onClick={() => setIsHelixLinksActive((prevState) => !prevState)}
+        />
+        <ToggleButton label="resume" id="resume-button" isDisabled />
+        <ToggleButton label="portfolio" id="portfolio-button" isDisabled />
       </div>
 
-      <div id="chat-links">
+      <div id="chat-links" className={isHelixLinksActive ? 'visible' : ''}>
         <a
           className="social-link"
           href="https://m.me/tylrcreative"
@@ -96,14 +68,6 @@ function App() {
           rel="noopener noreferrer"
         >
           <img src={WhatsApp_logo} alt="Chat Tylr on WhatsApp" />
-        </a>
-        <a
-          className="social-link"
-          href="#"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src={Instagram_logo} alt="Chat Tylr on Instagram" />
         </a>
         <a
           className="social-link"
