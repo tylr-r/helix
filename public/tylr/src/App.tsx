@@ -2,21 +2,22 @@ import './App.css';
 import Footer from './Footer';
 import Messenger_logo from './assets/Messenger_logo.svg';
 import WhatsApp_logo from './assets/WhatsApp_logo.svg';
-import github_mark from './assets/github-mark.svg';
 import ToggleButton from './ToggleButton';
 import { useEffect, useState } from 'react';
+import GithubIcon from './components/Icons/GithubIcon';
 
 function App() {
   const [isHelixLinksActive, setIsHelixLinksActive] = useState(false);
+  const isDarkMode = useSystemDarkMode();
 
   useEffect(() => {
-    // Apply theme based on user preference
-    const prefersDark = window.matchMedia(
-      '(prefers-color-scheme: dark)',
-    ).matches;
-    const theme = prefersDark ? 'dark' : 'light';
-    document.documentElement.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute(
+      'data-theme',
+      isDarkMode ? 'dark' : 'light',
+    );
+  }, [isDarkMode]);
 
+  useEffect(() => {
     // Set current year
     const currentYearElement = document.getElementById('current-year');
     if (currentYearElement) {
@@ -24,12 +25,16 @@ function App() {
     }
 
     // On load animation
-    setTimeout(() => {
+    const timeout = setTimeout(() => {
       const logoContainer = document.getElementById('logo-container');
       if (logoContainer) {
         logoContainer.classList.add('animate');
       }
     }, 800);
+
+    return () => {
+      clearTimeout(timeout);
+    };
   }, []);
 
   return (
@@ -75,16 +80,35 @@ function App() {
           target="_blank"
           rel="noopener noreferrer"
         >
-          <img
-            src={github_mark}
-            alt="View project on GitHub"
+          <GithubIcon
             className="github-logo"
+            fill={isDarkMode ? '#FFFFFF' : '#000000'}
           />
         </a>
       </div>
       <Footer />
     </>
   );
+}
+
+function useSystemDarkMode(): boolean {
+  const getPrefersDark = () =>
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false;
+
+  const [isDarkMode, setIsDarkMode] = useState(getPrefersDark);
+
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+    const handleChange = (e: MediaQueryListEvent) => {
+      setIsDarkMode(e.matches);
+    };
+
+    media.addEventListener('change', handleChange);
+    return () => media.removeEventListener('change', handleChange);
+  }, []);
+
+  return isDarkMode;
 }
 
 export default App;
