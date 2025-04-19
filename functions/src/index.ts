@@ -117,7 +117,7 @@ const storePersonalityAnalysis = async (
         ...messages,
         { role: 'system', content: instruction },
       ],
-      'gpt-4o-mini',
+      'gpt-4.1-mini',
       3000,
       0.8,
       true,
@@ -285,7 +285,7 @@ const processMessage = async (
     ];
     const imageInterpretation = await openAiRequest(
       [{ role: 'user', content: imageMessage, name: 'someone' }],
-      'gpt-4o',
+      'gpt-4.1',
       2000,
       1,
     );
@@ -342,7 +342,7 @@ const processMessage = async (
       // Process thread run
       response =
         (await processThreadRun(
-          'gpt-4.5-preview',
+          'gpt-4.1',
           thread,
           assistantId ?? '',
           instructions,

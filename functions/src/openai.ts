@@ -38,7 +38,7 @@ export const openAiRequest = async (
       const name = ai_functions[0].name;
       completion = await openai.chat.completions
         .create({
-          model: 'gpt-4.5-preview',
+          model,
           messages,
           max_tokens,
           temperature,
@@ -85,7 +85,7 @@ export const openAiRequest = async (
 
 export const openAiResponsesRequest = async (
   input: ResponseInput,
-  model = 'gpt-4o',
+  model = 'gpt-4.1',
   max_output_tokens = 2048,
   temperature = 1,
   web_search = false,
