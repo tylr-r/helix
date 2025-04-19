@@ -19,6 +19,8 @@ module.exports = {
   },
   ignorePatterns: [
     "/lib/**/*", // Ignore built files.
+    "/node_modules/**/*", // Ignore node_modules
+    "/hide/**/*", // Ignore hide folder
   ],
   plugins: [
     "@typescript-eslint",
