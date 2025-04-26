@@ -1,5 +1,4 @@
 import * as functions from 'firebase-functions/v2';
-import axios from 'axios';
 import { logLogs, logTime } from './utils';
 
 export type PlatformType = 'messenger' | 'instagram' | 'whatsapp';
@@ -27,15 +26,21 @@ export const facebookGraphRequest = async (
     const url = `https://graph.facebook.com/v16.0/${endpoint}${
       endpoint.includes('?') ? '' : '?'
     }access_token=${pageAccessToken}`;
-    const response = await axios({
+    
+    const response = await fetch(url, {
       method,
-      url,
-      data,
       headers: { 'Content-Type': 'application/json' },
+      body: method !== 'GET' ? JSON.stringify(data) : undefined,
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const responseData = await response.json();
     functions.logger.log(`Facebook Graph API request successful: ${endpoint}`);
     logTime(start, 'sendFBGraphRequest');
-    return response.data;
+    return responseData;
   } catch (error: any) {
     functions.logger.error(`Error in Facebook Graph API request: ${error}`);
   }

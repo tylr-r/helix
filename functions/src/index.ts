@@ -1,5 +1,4 @@
 import * as functions from 'firebase-functions/v2';
-import axios from 'axios';
 import admin from 'firebase-admin';
 import {
   openAiRequest,
@@ -30,16 +29,20 @@ const database = admin.database();
 const getPrimer = async () => {
   const start = Date.now();
   try {
-    const response = await axios({
-      method: 'get',
-      maxBodyLength: Infinity,
-      url: `https://api.notion.com/v1/blocks/${notionBlockId}`,
+    const response = await fetch(`https://api.notion.com/v1/blocks/${notionBlockId}`, {
+      method: 'GET',
       headers: {
         'Notion-Version': '2022-02-22',
         Authorization: `Bearer ${notionToken}`,
       },
     });
-    const primerText = response.data.code.rich_text[0].plain_text;
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const primerText = data.code.rich_text[0].plain_text;
     try {
       const parsedPrimer = JSON.parse(primerText);
       logTime(start, 'getPrimer');
