@@ -1,27 +1,23 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import * as functions from 'firebase-functions';
-import { onRequest } from 'firebase-functions/v2/https';
+import * as functions from 'firebase-functions/v2';
 import axios from 'axios';
 import admin from 'firebase-admin';
 import {
   openAiRequest,
-  // openAiResponsesRequest,
   updateAssistant,
-  createThreadMessage,
-  listThreadMessages,
-  processThreadRun,
-  createThread,
+  openAiResponsesRequest,
 } from './openai';
-import { logLogs, logTime, logs } from './utils';
+import { getHumanReadableDate, logLogs, logTime, logs } from './utils';
 import {
-  facebookGraphRequest,
+  PlatformType,
   sendWhatsAppReceipt,
   sendMessengerReceipt,
   sendMessengerMessage,
   sendWhatsAppMessage,
   extractWhatsAppMessageDetails,
+  getUserName,
+  getPreviousMessages,
 } from './facebook';
-
+import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
@@ -30,10 +26,6 @@ const assistantId = process.env.ASSISTANT_ID;
 
 admin.initializeApp();
 const database = admin.database();
-
-const currentTime = new Date().toLocaleString('en-US', {
-  timeZone: 'America/Los_Angeles',
-});
 
 const getPrimer = async () => {
   const start = Date.now();
@@ -60,55 +52,74 @@ const getPrimer = async () => {
   }
 };
 
-const storeThreadId = async (from: string, thread: any, userName: string) => {
-  logLogs('Storing openAi thread id with in Database');
-  const { id, metadata, created_at, object } = thread;
+const storeNewUser = async (
+  userId: string,
+  userName: string,
+  platform: PlatformType,
+  update = false,
+) => {
+  const humanReadableDate = getHumanReadableDate();
   try {
-    database.ref(`users/${from}/thread`).set({
-      id,
-      metadata,
-      created_at,
-      object,
+    if (update) {
+      logLogs('Updating user info');
+      database.ref(`users/${userId}`).update({
+        created_at: humanReadableDate,
+        userName,
+        platform,
+      });
+    }
+    logLogs('Creating new user info');
+    database.ref(`users/${userId}`).set({
+      created_at: humanReadableDate,
       userName,
+      platform,
     });
   } catch (error) {
-    functions.logger.error(`Error storing thread id: ${error}`);
+    functions.logger.error(`Error storing new user: ${error}`);
+  }
+};
+
+const updateLastThreadId = async (
+  userId: string,
+  thread: string | null,
+  userName: string,
+) => {
+  logLogs('Storing latest thread id in Database');
+  const lastUpdated = getHumanReadableDate();
+  const id = thread;
+  logLogs(`userName: ${userName}`);
+  try {
+    database.ref(`users/${userId}/thread`).set({
+      id,
+      lastUpdated,
+    });
+  } catch (error) {
+    functions.logger.error(`Error updating thread id: ${error}`);
   }
 };
 
 const storePersonalityAnalysis = async (
   name: string,
-  from: string,
-  threadMessages: Array<any>,
+  userId: string,
   system: string,
+  platform: PlatformType,
 ) => {
-  const start = Date.now();
-  const humanReadableDate = new Date(start).toLocaleString('en-US', {
-    timeZone: 'America/Los_Angeles',
-  });
-  logLogs('Storing personality in Database');
-  // check if thread id exists
-  try {
-    const userRef = database.ref(`users/${from}`);
-    const userSnapshot = await userRef.once('value');
-    const userInfoSnapshot = userSnapshot.val();
+  const humanReadableDate = getHumanReadableDate();
 
-    // get last 10 messages
-    const messages = threadMessages
-      .map((message) => {
-        return {
-          role: message.role,
-          content: message.content[0]?.text?.value,
-        };
-      })
-      .reverse()
-      .slice(-6);
+  try {
+    const thread = await getPreviousMessages(userId, 10, platform);
     functions.logger.log(
-      `message with ${name}. recent messages: ${JSON.stringify(messages)}`,
+      `Fetched ${thread.length} messages for user ${userId}`,
     );
-    if (!userInfoSnapshot) {
-      return;
-    }
+
+    const messages = thread
+      .map(({ id, message }) => ({
+        role: id === userId ? 'user' : 'assistant',
+        content: message,
+      }))
+      .slice(-6);
+    functions.logger.log(`Prepared ${messages.length} messages for analysis`);
+
     const instruction = `You recently have been texting with ${name} and are going to write down your inner thoughts and judgements about the converation. Remember to be realistic, critical, and judgmental. Remember, these are your inner thoughts so you don't have to be nice. You are very accurate in analyzing people with psychology. Always include ${name}'s name in the entry and remember you are writing about your conversation so keep it in the first person. IMPORTANT: - you are tylr. - you are not an assistant and you are not an ai but rather you are an everyday person with your own opinions.`;
 
     const newPersonality = await openAiRequest(
@@ -144,6 +155,10 @@ const storePersonalityAnalysis = async (
                 type: 'string',
                 description: `Your personal analysis of the conversation including any doubts, concerns, or critical viewpoints about ${name} and thoughts about their reaction to what you have to say. These are notes to yourself to remember in the future. Include critical judgements or skepticism as well. These are your subjective opinions.`,
               },
+              EmotionDetection: {
+                type: 'string',
+                description: `Your analysis of ${name}'s emotions and feelings during the conversation. Include any observations about their emotional state and how it may have influenced the conversation.`,
+              },
             },
             required: [
               'Summary',
@@ -155,12 +170,22 @@ const storePersonalityAnalysis = async (
         },
       ],
     );
-    database.ref(`users/${from}/personality`).set({
-      personality: newPersonality,
-    });
-    try {
-      logLogs('Updating personality in Notion');
-      const data = {
+    functions.logger.log('OpenAI returned personality object');
+    if (!newPersonality) throw new Error('Empty AI response');
+
+    await database
+      .ref(`users/${userId}/personality`)
+      .set({ personality: newPersonality });
+    functions.logger.log('Firebase write OK');
+
+    fetch(`https://api.notion.com/v1/blocks/${personalityBlockId}/children`, {
+      method: 'PATCH',
+      headers: {
+        'Notion-Version': '2022-02-22',
+        Authorization: `Bearer ${notionToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
         children: [
           {
             object: 'block',
@@ -169,89 +194,76 @@ const storePersonalityAnalysis = async (
               rich_text: [
                 {
                   type: 'text',
-                  text: {
-                    content: JSON.stringify(newPersonality),
-                  },
+                  text: { content: JSON.stringify(newPersonality) },
                 },
               ],
               language: 'json',
             },
           },
         ],
-      };
-      const headers = {
-        'Notion-Version': '2022-02-22',
-        Authorization: `Bearer ${notionToken}`,
-        'Content-Type': 'application/json',
-      };
-      fetch(`https://api.notion.com/v1/blocks/${personalityBlockId}/children`, {
-        method: 'PATCH',
-        headers,
-        body: JSON.stringify(data),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          logLogs(`Notion response: ${JSON.stringify(data)}`);
-        })
-        .catch((error) => {
-          console.error('Error:', error);
-        });
-      logTime(start, 'updateAssistant');
-    } catch (error) {
-      functions.logger.error(`Error updating personality: ${error}`);
-    }
-  } catch (error) {
-    functions.logger.error(`Error storing thread id: ${error}`);
+      }),
+    })
+      .then((res) =>
+        functions.logger.log(`Notion update status: ${res.status}`),
+      )
+      .catch((error) =>
+        functions.logger.error(`Notion update failed: ${error}`),
+      );
+  } catch (error: any) {
+    functions.logger.error(`storePersonalityAnalysis failed: ${error}`);
   }
 };
 
-const getThread = async (from: string, platform: string) => {
+/**
+ * Retrieves stored user information (thread ID and username) from the database.
+ */
+const getStoredInfo = async (
+  userId: string,
+  platform: PlatformType,
+): Promise<{ thread: { id: string | null }; userName: string }> => {
   const start = Date.now();
-  logLogs('getting thread id from firestore');
+  logLogs(`Getting stored info for user ${userId} on ${platform}`);
   try {
-    const userRef = database.ref(`users/${from}`);
-    const userSnapshot = await userRef.once('value');
-    const userInfoSnapshot = userSnapshot.val();
+    const userInfo = (
+      await database.ref(`users/${userId}`).once('value')
+    ).val();
 
-    if (!userInfoSnapshot) {
-      logLogs('No user found, creating new thread');
-      let userName = 'someone';
-      if (platform === 'messenger') {
-        const userInfo = await facebookGraphRequest(
-          `me/conversations?fields=senders&user_id=${from}&`,
-          {},
-          'Error while getting Messenger name',
-          'GET',
-        );
-        userName = userInfo?.data.data[0].senders.data[0].name;
-      } else if (platform === 'instagram') {
-        const userInfo = await facebookGraphRequest(
-          `me/conversations?fields=name&platform=instagram&user_id=${from}&`,
-          {},
-          'Error while getting Instagram name',
-          'GET',
-        );
-        userName = userInfo?.data.data[0].name;
-      }
-      const metadata = {
-        userId: from,
-        name: userName,
-        platform,
-      };
-      const thread = await createThread(metadata);
-      if (thread) {
-        storeThreadId(from, thread, userName);
-      }
-      logTime(start, 'getThreadId');
-      return thread;
+    let userName: string;
+    let threadId: string | null = null;
+
+    if (!userInfo) {
+      logLogs(`No user found for ${userId}, creating new user.`);
+      userName = (await getUserName(userId, platform)) ?? 'someone';
+      await storeNewUser(userId, userName, platform, false);
+      logTime(start, `getStoredInfo (New User) for ${userId}`);
+      // New user won't have a thread ID yet
+      return { thread: { id: null }, userName };
     }
-    const thread = userInfoSnapshot.thread;
-    logTime(start, 'getThreadId');
-    return thread;
+
+    userName = userInfo.userName;
+    threadId = userInfo.thread?.id ?? null;
+
+    if (!userName) {
+      logLogs(`No username found for user ${userId}. Fetching and updating.`);
+      userName = (await getUserName(userId, platform)) ?? 'someone';
+      await storeNewUser(userId, userName, platform, true);
+    }
+
+    if (!threadId) {
+      logLogs(`No thread ID found for user ${userId}.`);
+      logTime(start, `getStoredInfo (No Thread) for ${userId}`);
+      return { thread: { id: null }, userName };
+    }
+
+    logTime(start, `getStoredInfo (Existing User) for ${userId}`);
+    return { thread: { id: threadId }, userName };
   } catch (error) {
-    functions.logger.error(`Error getting thread id: ${error}`);
-    logTime(start, 'getThreadId');
-    return;
+    functions.logger.error(
+      `Error getting stored info for user ${userId}: ${error}`,
+    );
+    logTime(start, `getStoredInfo (Error) for ${userId}`);
+    const fallbackUserName = (await getUserName(userId, platform)) ?? 'someone';
+    return { thread: { id: null }, userName: fallbackUserName };
   }
 };
 
@@ -259,37 +271,29 @@ const processMessage = async (
   messageId: string,
   userId: string,
   msgBody: string,
-  platform: string,
+  platform: PlatformType,
   attachment: any,
   name: string,
-  thread: string,
+  lastThreadId: string | null,
 ) => {
   logLogs(`Message from ${platform}:  ${msgBody}`);
   logLogs('user info: ' + JSON.stringify(name));
   // Get primer json from notion
   const { system, primer, reminder } = await getPrimer();
-  let userMessage = msgBody;
+  let userMessage: ResponseInputMessageContentList | string = msgBody;
   let instructions = '';
+  const currentTime = getHumanReadableDate();
   let response = 'Sorry, I am having troubles lol';
-  const customReminder = `you are talking with ${name} on ${platform} and the current time is ${currentTime}`;
-  if (attachment) {
-    const imageMessage = [
+  const customReminder = `You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
+  const imageUrl: string = attachment?.[0]?.payload?.url;
+  if (imageUrl) {
+    userMessage = [
       {
-        type: 'text',
-        text: ' Visualize and describe the contents of the image thoroughly, focusing on the setting, objects, people (noting their actions, expressions, and emotions), colors, and atmosphere. Pay special attention to the context and any text included in the image. Then, if it is a meme, explain the humor by noting cultural references and the contrast that makes it funny.',
-      },
-      {
-        type: 'image_url',
-        image_url: attachment ? attachment[0]?.payload?.url : '',
+        type: 'input_image',
+        image_url: imageUrl,
+        detail: 'auto',
       },
     ];
-    const imageInterpretation = await openAiRequest(
-      [{ role: 'user', content: imageMessage, name: 'someone' }],
-      'gpt-4.1',
-      2000,
-      1,
-    );
-    userMessage = `I sent you a photo. This is the detailed description: ${imageInterpretation}. Reply as if you saw this image as an image that i sent to you and not as text.`;
   }
   const userDB = await database
     .ref(`users/${userId}/personality`)
@@ -301,74 +305,42 @@ const processMessage = async (
   logLogs(`Instructions: ${instructions}`);
 
   // Update assistant with instructions
-  await updateAssistant(instructions, assistantId ?? '');
-
-  const isThread = true;
-  // Start thread section
-
-  if (isThread) {
-    // Create a message in the thread
-    await createThreadMessage(thread, userMessage, messageId);
-
-    // Check if another message was added after processing
-    const threadMessagesResponse = await listThreadMessages(thread);
-    const threadMessages = threadMessagesResponse?.data || [];
-    let lastMessageId = (threadMessages[0]?.metadata as any)?.messageId as
-      | string
-      | null;
-    // add delay to wait for message to be added
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    if (platform === 'messenger') {
-      const messengerMessages = await facebookGraphRequest(
-        `me/conversations?fields=messages.limit(1){created_time,from,message}&user_id=${userId}&`,
-        {},
-        'Error while getting Messenger name',
-        'GET',
-      );
-      lastMessageId = await messengerMessages?.data?.data[0]?.messages?.data[0]
-        ?.id;
-    } else {
-      functions.logger.warn(`Using thread message id: ${lastMessageId}`);
-    }
-    if (lastMessageId) {
-      if (lastMessageId !== messageId) {
-        functions.logger.warn('New message was added, exiting');
-        return '';
-      }
-      logLogs(`No new messages, continuing...`);
-    }
-
-    try {
-      // Process thread run
-      response =
-        (await processThreadRun(
-          'gpt-4.1',
-          thread,
-          assistantId ?? '',
-          instructions,
-          customReminder,
-        )) || 'Sorry, I am having troubles lol';
-
-      // Store personality analysis only if we got a valid response
-      await storePersonalityAnalysis(
-        name,
-        userId,
-        threadMessages,
-        system[0].content,
-      );
-    } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error occurred';
-      functions.logger.error('Error in processMessage:', {
-        error: errorMessage,
-        userId,
-        platform,
-        messageId,
-      });
-    }
+  const shouldUpdateAssistant = false;
+  if (shouldUpdateAssistant) {
+    await updateAssistant(instructions, assistantId ?? '');
   } else {
-    // to add responses request here: response = await openAiResponsesRequest();
+    logLogs('Assistant update skipped.');
   }
+
+  await openAiResponsesRequest(
+    [
+      { role: 'system', content: instructions },
+      { role: 'user', content: userMessage },
+      { role: 'system', content: customReminder },
+    ],
+    'gpt-4.1', //imageUrl ? 'gpt-4.1' : 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
+    4000,
+    1,
+    true,
+    lastThreadId,
+  )
+    .then(async (responsesResponse) => {
+      if (!responsesResponse || responsesResponse?.output_text === '') {
+        logLogs('No response from OpenAI');
+        return 'Sorry, I am having troubles lol';
+      }
+      response = responsesResponse.output_text;
+      logLogs(`Response: ${JSON.stringify(response)}`);
+      const newLatestThreadId = responsesResponse?.id;
+      updateLastThreadId(userId, newLatestThreadId, name);
+      await storePersonalityAnalysis(name, userId, system[0].content, platform);
+      return response;
+    })
+    .catch((error) => {
+      functions.logger.error(`Error processing message: ${error}`);
+      return 'sorry, im a bit confused lol';
+    });
+
   return response;
 };
 
@@ -418,7 +390,7 @@ const app = async (req, res) => {
   // Webhook verification
   if (req.method === 'GET') {
     logLogs('Processing GET request');
-    functions.logger.info(req, { structuredData: true });
+    functions.logger.info('Request body:', JSON.stringify(req.body));
 
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -436,10 +408,23 @@ const app = async (req, res) => {
   if (req.method === 'POST') {
     res.sendStatus(200);
     logLogs('Processing POST request');
-    let platform = req.body.object;
+    let platform: PlatformType;
+
+    switch (req.body.object) {
+      case 'whatsapp_business_account':
+        platform = 'whatsapp';
+        break;
+      case 'page':
+        platform = 'messenger';
+        break;
+      case 'instagram':
+        platform = 'instagram';
+        break;
+      default:
+        platform = req.body.object as PlatformType;
+    }
     // WhatsApp
-    if (platform === 'whatsapp_business_account') {
-      platform = 'whatsapp';
+    if (platform === 'whatsapp') {
       logLogs('Processing whatsapp request');
       if (
         req.body.entry &&
@@ -459,8 +444,8 @@ const app = async (req, res) => {
         const { messageId, userId, msgBody, name, phoneNumberId, msgId } =
           extractWhatsAppMessageDetails(req);
         sendWhatsAppReceipt(phoneNumberId, msgId);
-        // Get user thread
-        const thread = await getThread(userId, platform);
+        // Get user info
+        const userInfo = await getStoredInfo(userId, platform);
         const aiResponse = await processMessage(
           messageId,
           userId,
@@ -468,7 +453,7 @@ const app = async (req, res) => {
           platform,
           null,
           name,
-          thread,
+          userInfo.thread.id ?? null,
         );
         await sendWhatsAppMessage(phoneNumberId, userId, aiResponse);
         return logLogs('Finished WhatsApp function');
@@ -476,57 +461,51 @@ const app = async (req, res) => {
       return logLogs('Not a status change or message');
     }
     // Messenger or Instagram
-    if (platform === 'page' || platform === 'instagram') {
-      logLogs('Processing page request');
-      if (platform === 'page') {
-        platform = 'messenger';
+    logLogs('Processing page request');
+    const entry = req.body.entry[0];
+    if (entry.messaging) {
+      const userId = entry.messaging[0].sender.id;
+      const messageId = entry.messaging[0].message.mid ?? '';
+      const msgBody = entry.messaging[0].message.text ?? '';
+      const attachment = entry.messaging[0]?.message?.attachments ?? null;
+      // Mark message as seen if Messenger
+      if (platform === 'messenger') {
+        sendMessengerReceipt(userId, 'mark_seen').then(() => {
+          sendMessengerReceipt(userId, 'typing_on');
+        });
       }
-      const entry = req.body.entry[0];
-      if (entry.messaging) {
-        const userId = entry.messaging[0].sender.id;
-        const messageId = entry.messaging[0].message.mid ?? '';
-        const msgBody = entry.messaging[0].message.text ?? '';
-        const attachment = entry.messaging[0]?.message?.attachments ?? null;
-        // Mark message as seen if Messenger
-        if (platform === 'messenger') {
-          sendMessengerReceipt(userId, 'mark_seen').then(() => {
-            sendMessengerReceipt(userId, 'typing_on');
-          });
-        }
-        // Get user thread
-        const thread = await getThread(userId, platform);
-        const threadId = thread?.id;
-        const name = thread?.metadata?.name;
-        // Check if message is looking for an agent
-        const needAgent = await checkIfNeedAgent(msgBody, userId, platform);
-        if (needAgent) {
-          return logLogs('Agent needed');
-        }
-        const aiResponse = await processMessage(
-          messageId,
-          userId,
-          msgBody,
-          platform,
-          attachment,
-          name,
-          threadId,
-        );
-        if (platform === 'messenger') {
-          sendMessengerReceipt(userId, 'typing_off');
-        }
-        if (aiResponse === '') {
-          return logLogs('No response needed');
-        }
-        await sendMessengerMessage(userId, aiResponse, platform);
-        logTime(startTime, 'Whole function time:');
-        functions.logger.log(logs);
-        return functions.logger.debug('Finished Messenger function');
+      // Get user info
+      const userInfo = await getStoredInfo(userId, platform);
+      const lastThreadId: string | null = userInfo.thread.id;
+      const name = userInfo.userName ?? 'someone';
+      // Check if message is looking for an agent
+      const needAgent = await checkIfNeedAgent(msgBody, userId, platform);
+      if (needAgent) {
+        return logLogs('Agent needed');
       }
-      return logLogs('Not a message');
+      const aiResponse = await processMessage(
+        messageId,
+        userId,
+        msgBody,
+        platform,
+        attachment,
+        name,
+        lastThreadId,
+      );
+      if (platform === 'messenger') {
+        sendMessengerReceipt(userId, 'typing_off');
+      }
+      if (aiResponse === '') {
+        return logLogs('No response needed');
+      }
+      await sendMessengerMessage(userId, aiResponse, platform);
+      logTime(startTime, 'Whole function time:');
+      functions.logger.log(logs);
+      return functions.logger.debug('Finished Messenger function');
     }
-    return res.sendStatus(404).send();
+    return logLogs('Not a message');
   }
   return logLogs('Running for no reason...');
 };
 
-export const webhook = onRequest(app);
+export const webhook = functions.https.onRequest(app);

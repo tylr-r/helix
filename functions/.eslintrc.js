@@ -28,6 +28,6 @@ module.exports = {
   ],
   rules: {
     "import/no-unresolved": 0,
-    "indent": ["error", 2],
+    "@typescript-eslint/no-explicit-any": "off",
   },
 };

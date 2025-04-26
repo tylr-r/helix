@@ -1,7 +1,17 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import * as functions from 'firebase-functions';
+import * as functions from 'firebase-functions/v2';
 import axios from 'axios';
 import { logLogs, logTime } from './utils';
+
+export type PlatformType = 'messenger' | 'instagram' | 'whatsapp';
+
+type MessageThread = {
+  from: {
+    name: string;
+    id: string;
+  };
+  message: string;
+  id: string;
+}[];
 
 // Get environment variable for Facebook
 const pageAccessToken = process.env.PAGE_ACCESS_TOKEN;
@@ -14,26 +24,75 @@ export const facebookGraphRequest = async (
 ) => {
   const start = Date.now();
   try {
+    const url = `https://graph.facebook.com/v16.0/${endpoint}${
+      endpoint.includes('?') ? '' : '?'
+    }access_token=${pageAccessToken}`;
     const response = await axios({
       method,
-      url: `https://graph.facebook.com/v16.0/${endpoint}access_token=${pageAccessToken}`,
+      url,
       data,
       headers: { 'Content-Type': 'application/json' },
     });
+    functions.logger.log(`Facebook Graph API request successful: ${endpoint}`);
     logTime(start, 'sendFBGraphRequest');
-    return response;
+    return response.data;
   } catch (error: any) {
-    if (error.response && error.response.data) {
-      const detailedErrorMsg = JSON.stringify(error.response.data);
-      return functions.logger.error(`${errorMsg}: ${detailedErrorMsg}`);
-    } else if (error.request) {
-      // The request was made but no response was received
-      return functions.logger.error(`${errorMsg}: No response received.`);
-    } else {
-      // Something happened in setting up the request that triggered an Error
-      return functions.logger.error(`${errorMsg}: ${error.message}`);
-    }
+    functions.logger.error(`Error in Facebook Graph API request: ${error}`);
   }
+};
+
+// Get user name from either Messenger or Instagram
+export const getUserName = async (
+  userId: string,
+  platform: PlatformType,
+): Promise<string> => {
+  const start = Date.now();
+  const isMessenger = platform === 'messenger';
+  const endpoint = isMessenger
+    ? `me/conversations?fields=senders&user_id=${userId}&`
+    : `me/conversations?fields=name&platform=instagram&user_id=${userId}&`;
+  const userInfo = await facebookGraphRequest(
+    endpoint,
+    {},
+    `Error while getting user name for ${platform}`,
+    'GET',
+  );
+  logTime(start, 'getUserName');
+  const name = isMessenger
+    ? userInfo?.data[0].senders.data[0].name
+    : userInfo?.data[0].name;
+  return name;
+};
+
+export const getPreviousMessages = async (
+  userId: string,
+  limit = 10,
+  platform: PlatformType,
+): Promise<MessageThread> => {
+  const start = Date.now();
+  functions.logger.log(
+    `Getting previous messages for ${platform} userId: ${userId}`,
+  );
+  const endpoint =
+    platform === 'messenger'
+      ? `me/conversations?fields=messages.limit(${limit}){from,message}&user_id=${userId}&`
+      : `me/conversations?fields=messages.limit(${limit}){from,message}&platform=instagram&user_id=${userId}&`;
+
+  const response = await facebookGraphRequest(
+    endpoint,
+    {},
+    `Error while getting previous messages for ${platform}`,
+    'GET',
+  );
+
+  if (!response) {
+    throw new Error(`Failed to get previous messages for ${platform}`);
+  }
+
+  const messageThread = response?.data[0].messages.data as MessageThread;
+  functions.logger.log(`Previous messages: ${JSON.stringify(messageThread)}`);
+  logTime(start, 'getPreviousMessages');
+  return messageThread;
 };
 
 // Send WhatsApp receipt

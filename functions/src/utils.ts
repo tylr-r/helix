@@ -14,3 +14,9 @@ export const logTime = async (start: number, label: string) => {
   const end = Date.now();
   logLogs(`Time to ${label}: ${end - start}ms`);
 };
+
+export const getHumanReadableDate = (): string => {
+  return new Date().toLocaleString('en-US', {
+    timeZone: 'America/Los_Angeles',
+  });
+};
