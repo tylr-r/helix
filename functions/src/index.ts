@@ -473,7 +473,9 @@ const app = async (req, res) => {
       const attachment = entry.messaging[0]?.message?.attachments ?? null;
       // Mark message as seen if Messenger
       if (platform === 'messenger') {
-        sendMessengerReceipt(userId, 'mark_seen').then(() => {
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        sendMessengerReceipt(userId, 'mark_seen').then(async () => {
+          await new Promise(resolve => setTimeout(resolve, 5000));
           sendMessengerReceipt(userId, 'typing_on');
         });
       }
@@ -496,10 +498,7 @@ const app = async (req, res) => {
         lastThreadId,
       );
       if (platform === 'messenger') {
-        sendMessengerReceipt(userId, 'typing_off');
-      }
-      if (aiResponse === '') {
-        return logLogs('No response needed');
+        await sendMessengerReceipt(userId, 'typing_off');
       }
       await sendMessengerMessage(userId, aiResponse, platform);
       logTime(startTime, 'Whole function time:');
