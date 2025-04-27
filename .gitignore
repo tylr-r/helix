@@ -71,3 +71,8 @@ test/facebook_messages.json
 facebook_messages.json
 test/output
 public/tylr/package-lock.json
+
+# ai
+.ai/
+.cursor/*
+.cursorignore
