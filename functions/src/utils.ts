@@ -2,6 +2,7 @@ import * as functions from 'firebase-functions';
 
 // Store all logs
 export const logs: string[] = [];
+export const timeLogs: string[] = [];
 
 // Log to Firebase and store in logs array
 export const logLogs = (log: string) => {
@@ -12,7 +13,9 @@ export const logLogs = (log: string) => {
 // Log time elapsed for operations
 export const logTime = async (start: number, label: string) => {
   const end = Date.now();
-  logLogs(`Time to ${label}: ${end - start}ms`);
+  const log = `Time to ${label}: ${end - start}ms`;
+  functions.logger.log(log);
+  timeLogs.push(log);
 };
 
 export const getHumanReadableDate = (): string => {

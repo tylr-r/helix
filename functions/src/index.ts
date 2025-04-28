@@ -5,7 +5,13 @@ import {
   updateAssistant,
   openAiResponsesRequest,
 } from './openai';
-import { getHumanReadableDate, logLogs, logTime, logs } from './utils';
+import {
+  getHumanReadableDate,
+  logLogs,
+  logTime,
+  logs,
+  timeLogs,
+} from './utils';
 import {
   PlatformType,
   sendWhatsAppReceipt,
@@ -29,13 +35,16 @@ const database = admin.database();
 const getPrimer = async () => {
   const start = Date.now();
   try {
-    const response = await fetch(`https://api.notion.com/v1/blocks/${notionBlockId}`, {
-      method: 'GET',
-      headers: {
-        'Notion-Version': '2022-02-22',
-        Authorization: `Bearer ${notionToken}`,
+    const response = await fetch(
+      `https://api.notion.com/v1/blocks/${notionBlockId}`,
+      {
+        method: 'GET',
+        headers: {
+          'Notion-Version': '2022-02-22',
+          Authorization: `Bearer ${notionToken}`,
+        },
       },
-    });
+    );
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
@@ -503,7 +512,8 @@ const app = async (req, res) => {
       await sendMessengerMessage(userId, aiResponse, platform);
       logTime(startTime, 'Whole function time:');
       functions.logger.log(logs);
-      return functions.logger.debug('Finished Messenger function');
+      functions.logger.log(timeLogs);
+      return functions.logger.log('Finished Messenger function');
     }
     return logLogs('Not a message');
   }
