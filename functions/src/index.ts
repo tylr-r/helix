@@ -18,7 +18,7 @@ import {
   getUserName,
 } from './facebook';
 import { checkIfNeedAgent } from './agentHandler';
-import { storePersonalityAnalysis } from './personality';
+import { getPersonalityAnalysis } from './personality';
 import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
@@ -225,7 +225,20 @@ const processMessage = async (
       logLogs(`Response: ${JSON.stringify(response)}`);
       const newLatestThreadId = responsesResponse?.id;
       updateLastThreadId(userId, newLatestThreadId, name);
-      await storePersonalityAnalysis(name, userId, system[0].content, platform);
+
+      // Get personality analysis and store it in database
+      const personalityData = await getPersonalityAnalysis(
+        name,
+        userId,
+        system[0].content,
+        platform,
+      );
+      if (personalityData) {
+        await database
+          .ref(`users/${userId}/personality`)
+          .set({ personality: personalityData });
+      }
+
       return response;
     })
     .catch((error) => {

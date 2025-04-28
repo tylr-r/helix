@@ -1,5 +1,4 @@
 import * as functions from 'firebase-functions/v2';
-import admin from 'firebase-admin';
 import { getHumanReadableDate } from './utils';
 import { PlatformType, getPreviousMessages } from './facebook';
 import { openAiRequest } from './openai';
@@ -8,18 +7,16 @@ import { openAiRequest } from './openai';
 const notionToken = process.env.NOTION_TOKEN;
 const personalityBlockId = process.env.PERSONALITY_BLOCK_ID;
 
-// Get database reference
-const database = admin.database();
-
 /**
- * Analyzes messages to generate personality insights and stores them in database and Notion
+ * Analyzes messages to generate personality insights and writes to Notion
+ * Returns the personality data for database storage in index.ts
  */
-export const storePersonalityAnalysis = async (
+export const getPersonalityAnalysis = async (
   name: string,
   userId: string,
   system: string,
   platform: PlatformType,
-) => {
+): Promise<any> => {
   const humanReadableDate = getHumanReadableDate();
 
   try {
@@ -89,11 +86,7 @@ export const storePersonalityAnalysis = async (
     functions.logger.log('OpenAI returned personality object');
     if (!newPersonality) throw new Error('Empty AI response');
 
-    await database
-      .ref(`users/${userId}/personality`)
-      .set({ personality: newPersonality });
-    functions.logger.log('Firebase write OK');
-
+    // Update Notion
     fetch(`https://api.notion.com/v1/blocks/${personalityBlockId}/children`, {
       method: 'PATCH',
       headers: {
@@ -125,7 +118,10 @@ export const storePersonalityAnalysis = async (
       .catch((error) =>
         functions.logger.error(`Notion update failed: ${error}`),
       );
+
+    return newPersonality;
   } catch (error: any) {
-    functions.logger.error(`storePersonalityAnalysis failed: ${error}`);
+    functions.logger.error(`getPersonalityAnalysis failed: ${error}`);
+    return null;
   }
 };
