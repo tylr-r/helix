@@ -1,5 +1,4 @@
 import * as functions from 'firebase-functions/v2';
-import admin from 'firebase-admin';
 import { getHumanReadableDate } from './utils';
 import { PlatformType, getPreviousMessages } from './facebook';
 import { openAiRequest } from './openai';
@@ -16,9 +15,6 @@ interface PersonalityAnalysis {
 // Environment variables
 const notionToken = process.env.NOTION_TOKEN;
 const personalityBlockId = process.env.PERSONALITY_BLOCK_ID;
-
-// Get database reference
-const database = admin.database();
 
 /**
  * Updates the Notion database with personality analysis
@@ -132,14 +128,15 @@ async function generatePersonalityAnalysis(
 }
 
 /**
- * Analyzes messages to generate personality insights and stores them in database and Notion
+ * Analyzes messages to generate personality insights and writes to Notion
+ * Returns the personality data for database storage in index.ts
  */
-export const storePersonalityAnalysis = async (
+export const getPersonalityAnalysis = async (
   name: string,
   userId: string,
   system: string,
   platform: PlatformType,
-) => {
+): Promise<any> => {
   try {
     // Fetch conversation messages
     const thread = await getPreviousMessages(userId, 10, platform);
@@ -165,20 +162,12 @@ export const storePersonalityAnalysis = async (
       system,
     );
 
-    // Store in Firebase
-    await database
-      .ref(`users/${userId}/personality`)
-      .set({ personality: personalityAnalysis });
-    functions.logger.log('Firebase write OK');
-
     // Store in Notion
     await updateNotionWithPersonality(personalityAnalysis);
 
     return personalityAnalysis;
   } catch (error: any) {
-    functions.logger.error(
-      `storePersonalityAnalysis failed: ${error.message || error}`,
-    );
-    return;
+    functions.logger.error(`getPersonalityAnalysis failed: ${error}`);
+    return null;
   }
 };
