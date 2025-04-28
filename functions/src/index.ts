@@ -330,7 +330,7 @@ const processMessage = async (
       { role: 'user', content: userMessage },
       { role: 'system', content: customReminder },
     ],
-    'gpt-4.1', //imageUrl ? 'gpt-4.1' : 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
+    imageUrl ? 'gpt-4.1' : 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
     4000,
     1,
     true,
@@ -482,11 +482,18 @@ const app = async (req, res) => {
       const attachment = entry.messaging[0]?.message?.attachments ?? null;
       // Mark message as seen if Messenger
       if (platform === 'messenger') {
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        sendMessengerReceipt(userId, 'mark_seen').then(async () => {
-          await new Promise(resolve => setTimeout(resolve, 5000));
-          sendMessengerReceipt(userId, 'typing_on');
-        });
+        try {
+          // Wait 3 seconds before marking as seen
+          await new Promise((resolve) => setTimeout(resolve, 3000));
+          await sendMessengerReceipt(userId, 'mark_seen');
+
+          // Wait 5 seconds before showing typing indicator
+          await new Promise((resolve) => setTimeout(resolve, 5000));
+          await sendMessengerReceipt(userId, 'typing_on');
+        } catch (error) {
+          functions.logger.error(`Error sending Messenger receipts: ${error}`);
+          // Continue execution even if receipts fail
+        }
       }
       // Get user info
       const userInfo = await getStoredInfo(userId, platform);
