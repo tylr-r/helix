@@ -22,6 +22,7 @@ import {
   getUserName,
   getPreviousMessages,
 } from './facebook';
+import { checkIfNeedAgent } from './agentHandler';
 import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;
@@ -356,45 +357,6 @@ const processMessage = async (
   return response;
 };
 
-const checkIfNeedAgent = async (message: string, userId, platform) => {
-  const agentPhrases = [
-    'agent',
-    'real person',
-    'human',
-    'help',
-    'support',
-    'talk to someone',
-    'talk to a person',
-    'talk to a human',
-    'talk to a real person',
-    'talk to a real human',
-  ];
-  // get an agent if the message contains any of the agent phrases and is on instagram
-  const needAgent =
-    agentPhrases.some((phrases) => message.includes(phrases)) &&
-    platform === 'instagram';
-  logLogs(`Need an agent from this message: ${needAgent}`);
-  if (needAgent === true) {
-    await sendMessengerMessage(
-      userId,
-      'I am connecting you with a real agent. Tyler will be with you within 24 hours.',
-      platform,
-    );
-  } /* else {
-    const recentMessages = await getPreviousMessages(userId, 5, platform);
-    if (recentMessages) {
-      const recentMessagesString = JSON.stringify(recentMessages);
-      if (
-        recentMessagesString.includes('I am connecting you with a real agent')
-      ) {
-        needAgent = true;
-        logLogs(`Recently requested agent`);
-      }
-    }
-  } */
-  return needAgent;
-};
-
 const app = async (req, res) => {
   const startTime = Date.now();
   logLogs('running app function!');
@@ -499,8 +461,11 @@ const app = async (req, res) => {
       const userInfo = await getStoredInfo(userId, platform);
       const lastThreadId: string | null = userInfo.thread.id;
       const name = userInfo.userName ?? 'someone';
-      // Check if message is looking for an agent
-      const needAgent = await checkIfNeedAgent(msgBody, userId, platform);
+      // Check if message is looking for an agent (only for Instagram)
+      let needAgent = false;
+      if (platform === 'instagram') {
+        needAgent = await checkIfNeedAgent(msgBody, userId);
+      }
       if (needAgent) {
         return logLogs('Agent needed');
       }

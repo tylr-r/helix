@@ -3,7 +3,7 @@ import { logLogs, logTime } from './utils';
 
 export type PlatformType = 'messenger' | 'instagram' | 'whatsapp';
 
-type MessageThread = {
+export type MessageThread = {
   from: {
     name: string;
     id: string;
@@ -26,7 +26,7 @@ export const facebookGraphRequest = async (
     const url = `https://graph.facebook.com/v16.0/${endpoint}${
       endpoint.includes('?') ? '' : '?'
     }access_token=${pageAccessToken}`;
-    
+
     const response = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
@@ -42,7 +42,9 @@ export const facebookGraphRequest = async (
     logTime(start, 'sendFBGraphRequest');
     return responseData;
   } catch (error: any) {
-    functions.logger.error(`Error in Facebook Graph API request ${endpoint}: ${error}`);
+    functions.logger.error(
+      `Error in Facebook Graph API request ${endpoint}: ${error}`,
+    );
   }
 };
 
@@ -77,9 +79,7 @@ export const getPreviousMessages = async (
   platform: PlatformType,
 ): Promise<MessageThread> => {
   const start = Date.now();
-  logLogs(
-    `Getting previous messages for ${platform} userId: ${userId}`,
-  );
+  logLogs(`Getting previous messages for ${platform} userId: ${userId}`);
   const endpoint =
     platform === 'messenger'
       ? `me/conversations?fields=messages.limit(${limit}){from,message}&user_id=${userId}&`
@@ -125,7 +125,9 @@ export const sendMessengerReceipt = async (
   userId: string,
   sender_action: string,
 ) => {
-  logLogs(`Sending Messenger receipt to ${userId} with action: ${sender_action}`);
+  logLogs(
+    `Sending Messenger receipt to ${userId} with action: ${sender_action}`,
+  );
   await facebookGraphRequest(
     'me/messages?',
     {
