@@ -83,33 +83,46 @@ export const openAiResponsesRequest = async (
   temperature = 1,
   web_search = false,
   previous_response_id?: string | null,
+  retry_attempts = 3,
+  retry_delay = 1000,
 ) => {
   const start = Date.now();
-  try {
-    logLogs('Starting openai responses API call');
-    functions.logger.debug(
-      `responses call: ${JSON.stringify({
-        model,
-        input,
-        max_output_tokens,
-        temperature,
-        web_search,
-      })}`,
-    );
-    const webSearchConfig: Array<Tool> = [
-      {
-        type: 'web_search_preview',
-        user_location: {
-          type: 'approximate',
-          country: 'US',
-          region: 'WA',
+  let attempts = 0;
+
+  while (attempts < retry_attempts) {
+    const previousResponseId = attempts > 0 ? previous_response_id : null;
+    try {
+      logLogs(
+        `Starting openai responses API call (attempt ${
+          attempts + 1
+        }/${retry_attempts})`,
+      );
+      functions.logger.debug(
+        `responses call: ${JSON.stringify({
+          model,
+          input,
+          max_output_tokens,
+          temperature,
+          web_search,
+          previous_response_id: previousResponseId,
+        })}`,
+      );
+
+      const webSearchConfig: Array<Tool> = [
+        {
+          type: 'web_search_preview',
+          user_location: {
+            type: 'approximate',
+            country: 'US',
+            region: 'WA',
+          },
+          search_context_size: 'medium',
         },
-        search_context_size: 'medium',
-      },
-    ];
-    const tools = web_search ? webSearchConfig : undefined;
-    const response = await openai.responses
-      .create({
+      ];
+
+      const tools = web_search ? webSearchConfig : undefined;
+
+      const response = await openai.responses.create({
         model,
         input,
         previous_response_id,
@@ -122,19 +135,53 @@ export const openAiResponsesRequest = async (
         temperature,
         max_output_tokens,
         top_p: 0.9,
-      })
-      .catch((error) => {
-        functions.logger.error(
-          `Error sending to OpenAI Responses API: ${error}`,
-        );
       });
-    functions.logger.info(`Responses api input: ${JSON.stringify(input)}`);
-    await logTime(start, 'openAiResponsesRequest');
-    return response;
-  } catch (error) {
-    functions.logger.error(`Error sending to OpenAI Responses API: ${error}`);
-    return null;
+
+      functions.logger.info(
+        `Responses API successful with input: ${JSON.stringify(input)}`,
+      );
+      await logTime(start, 'openAiResponsesRequest');
+
+      if (response) {
+        return response;
+      } else {
+        throw new Error('Empty response received from OpenAI');
+      }
+    } catch (error) {
+      attempts++;
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+
+      // Check if error is retryable (rate limiting, server errors)
+      const isRetryableError =
+        errorMessage.includes('rate limit') ||
+        errorMessage.includes('timeout') ||
+        errorMessage.includes('500') ||
+        errorMessage.includes('503');
+
+      if (attempts >= retry_attempts || !isRetryableError) {
+        functions.logger.error(
+          `Error sending to OpenAI Responses API (${attempts}/${retry_attempts}): ${errorMessage}`,
+        );
+        return null;
+      }
+
+      // Log retry attempt
+      functions.logger.warn(
+        `Retrying OpenAI request after error: ${errorMessage} (attempt ${attempts}/${retry_attempts})`,
+      );
+
+      // Wait before retrying
+      await new Promise((resolve) =>
+        setTimeout(resolve, retry_delay * attempts),
+      );
+    }
   }
+
+  functions.logger.error(
+    `Failed to get response after ${retry_attempts} attempts`,
+  );
+  return null;
 };
 
 export const updateAssistant = async (

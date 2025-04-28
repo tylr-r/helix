@@ -13,7 +13,7 @@ export const logLogs = (log: string) => {
 // Log time elapsed for operations
 export const logTime = async (start: number, label: string) => {
   const end = Date.now();
-  const log = `Time to ${label}: ${end - start}ms`;
+  const log = `${end - start}ms for ${label}`;
   functions.logger.log(log);
   timeLogs.push(log);
 };
