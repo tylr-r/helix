@@ -42,10 +42,6 @@ const getPrimer = async () => {
       },
     );
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
     const data = await response.json();
     const primerText = data.code.rich_text[0].plain_text;
     try {
@@ -191,7 +187,9 @@ const processMessage = async (
     .ref(`users/${userId}/personality`)
     .once('value');
   const personalitySnapshot = userDB.val();
-  logLogs(`recent thoughts: ${JSON.stringify(personalitySnapshot)}`);
+  functions.logger.info(
+    `recent thoughts: ${JSON.stringify(personalitySnapshot)}`,
+  );
   const personalityString = `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
   logLogs(`Instructions: ${instructions}`);
@@ -336,18 +334,23 @@ const app = async (req, res) => {
       const attachment = entry.messaging[0]?.message?.attachments ?? null;
       // Mark message as seen if Messenger
       if (platform === 'messenger') {
-        try {
-          // Wait 3 seconds before marking as seen
-          await new Promise((resolve) => setTimeout(resolve, 3000));
-          await sendMessengerReceipt(userId, 'mark_seen');
+        // Run marking as seen and typing indicator asynchronously
+        (async () => {
+          try {
+            // Wait 3 seconds before marking as seen
+            await new Promise((resolve) => setTimeout(resolve, 3000));
+            await sendMessengerReceipt(userId, 'mark_seen');
 
-          // Wait 5 seconds before showing typing indicator
-          await new Promise((resolve) => setTimeout(resolve, 5000));
-          await sendMessengerReceipt(userId, 'typing_on');
-        } catch (error) {
-          functions.logger.error(`Error sending Messenger receipts: ${error}`);
-          // Continue execution even if receipts fail
-        }
+            // Wait 5 seconds before showing typing indicator
+            await new Promise((resolve) => setTimeout(resolve, 5000));
+            await sendMessengerReceipt(userId, 'typing_on');
+          } catch (error) {
+            functions.logger.error(
+              `Error sending Messenger receipts: ${error}`,
+            );
+            // Continue execution even if receipts fail
+          }
+        })();
       }
       // Get user info
       const userInfo = await getStoredInfo(userId, platform);

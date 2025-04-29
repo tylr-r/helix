@@ -88,15 +88,18 @@ export const openAiResponsesRequest = async (
 ) => {
   const start = Date.now();
   let attempts = 0;
+  let previousResponseId = previous_response_id;
 
   while (attempts < retry_attempts) {
-    const previousResponseId = attempts > 0 ? previous_response_id : null;
     try {
       logLogs(
         `Starting openai responses API call (attempt ${
           attempts + 1
         }/${retry_attempts})`,
       );
+      if (attempts > 0) {
+        previousResponseId = null;
+      }
       functions.logger.debug(
         `responses call: ${JSON.stringify({
           model,

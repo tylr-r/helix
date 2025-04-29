@@ -21,7 +21,6 @@ export const facebookGraphRequest = async (
   errorMsg: string,
   method: string,
 ) => {
-  const start = Date.now();
   try {
     const url = `https://graph.facebook.com/v16.0/${endpoint}${
       endpoint.includes('?') ? '' : '?'
@@ -34,13 +33,12 @@ export const facebookGraphRequest = async (
     });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(
+        `Facebook Graph API request failed with status ${response.status}: ${errorText}`,
+      );
     }
-
-    const responseData = await response.json();
-    logLogs(`Facebook Graph API request successful: ${endpoint}`);
-    logTime(start, 'sendFBGraphRequest');
-    return responseData;
+    return await response.json();
   } catch (error: any) {
     functions.logger.error(
       `Error in Facebook Graph API request ${endpoint}: ${error}`,
@@ -53,7 +51,6 @@ export const getUserName = async (
   userId: string,
   platform: PlatformType,
 ): Promise<string> => {
-  // Log the request to get user name
   logLogs(`Getting user name for ${platform} userId: ${userId}`);
   const start = Date.now();
   const isMessenger = platform === 'messenger';
@@ -92,10 +89,6 @@ export const getPreviousMessages = async (
     'GET',
   );
 
-  if (!response) {
-    throw new Error(`Failed to get previous messages for ${platform}`);
-  }
-
   const messageThread = response?.data[0].messages.data as MessageThread;
   logLogs(`Previous messages: ${JSON.stringify(messageThread)}`);
   logTime(start, 'getPreviousMessages');
@@ -108,6 +101,7 @@ export const sendWhatsAppReceipt = async (
   msgId: string,
 ) => {
   logLogs(`Sending WhatsApp read receipt for message: ${msgId}`);
+  const start = Date.now();
   await facebookGraphRequest(
     `${phone_number_id}/messages?`,
     {
@@ -118,6 +112,7 @@ export const sendWhatsAppReceipt = async (
     'Error while marking WhatsApp as seen',
     'POST',
   );
+  logTime(start, 'sendWhatsAppReceipt');
 };
 
 // Send Messenger receipt
@@ -128,6 +123,7 @@ export const sendMessengerReceipt = async (
   logLogs(
     `Sending Messenger receipt to ${userId} with action: ${sender_action}`,
   );
+  const start = Date.now();
   await facebookGraphRequest(
     'me/messages?',
     {
@@ -137,6 +133,7 @@ export const sendMessengerReceipt = async (
     `Error while sending Messenger action: ${sender_action}`,
     'POST',
   );
+  logTime(start, 'sendMessengerReceipt');
 };
 
 // Send Messenger message
@@ -146,6 +143,7 @@ export const sendMessengerMessage = async (
   platform: string,
 ) => {
   logLogs(`Sending ${platform} message to ${userId}`);
+  const start = Date.now();
   await facebookGraphRequest(
     'me/messages?',
     {
@@ -155,6 +153,7 @@ export const sendMessengerMessage = async (
     `Error while sending ${platform} message`,
     'POST',
   );
+  logTime(start, 'sendMessengerMessage');
 };
 
 // Send WhatsApp message
@@ -164,6 +163,7 @@ export const sendWhatsAppMessage = async (
   response: string,
 ) => {
   logLogs('Sending WhatsApp message');
+  const start = Date.now();
   await facebookGraphRequest(
     `${phoneNumberId}/messages?`,
     {
@@ -174,6 +174,7 @@ export const sendWhatsAppMessage = async (
     'Error while sending WhatsApp message',
     'POST',
   );
+  logTime(start, 'sendWhatsAppMessage');
 };
 
 // Extract WhatsApp message details from request
