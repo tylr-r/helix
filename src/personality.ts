@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions/v2';
-import { getHumanReadableDate } from './utils';
 import { PlatformType, getPreviousMessages } from './facebook';
 import { openAiRequest } from './openai';
+import { getHumanReadableDate } from './utils';
 
 // Define interfaces for personality analysis
 interface PersonalityAnalysis {

@@ -1,9 +1,9 @@
-import { logLogs } from './utils';
 import {
-  sendMessengerMessage,
   getPreviousMessages,
   MessageThread,
+  sendMessengerMessage,
 } from './facebook';
+import { logLogs } from './utils';
 
 const AGENT_REQUEST_PHRASES: ReadonlySet<string> = new Set([
   'agent',

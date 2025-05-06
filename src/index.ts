@@ -1,5 +1,22 @@
 import * as functions from 'firebase-functions/v2';
-import { updateAssistant, openAiResponsesRequest } from './openai';
+import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
+import { checkIfNeedAgent } from './agentHandler';
+import {
+  getPersonality,
+  getStoredInfo,
+  updateLastThreadId,
+  updatePersonality,
+} from './database';
+import {
+  PlatformType,
+  extractWhatsAppMessageDetails,
+  sendMessengerMessage,
+  sendMessengerReceipt,
+  sendWhatsAppMessage,
+  sendWhatsAppReceipt,
+} from './facebook';
+import { openAiResponsesRequest, updateAssistant } from './openai';
+import { getPersonalityAnalysis } from './personality';
 import {
   getHumanReadableDate,
   logLogs,
@@ -7,23 +24,6 @@ import {
   logs,
   timeLogs,
 } from './utils';
-import {
-  PlatformType,
-  sendWhatsAppReceipt,
-  sendMessengerReceipt,
-  sendMessengerMessage,
-  sendWhatsAppMessage,
-  extractWhatsAppMessageDetails,
-} from './facebook';
-import { checkIfNeedAgent } from './agentHandler';
-import { getPersonalityAnalysis } from './personality';
-import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
-import {
-  updateLastThreadId,
-  getStoredInfo,
-  updatePersonality,
-  getPersonality,
-} from './database';
 
 const verifyToken = process.env.VERIFY_TOKEN;
 const notionToken = process.env.NOTION_TOKEN;

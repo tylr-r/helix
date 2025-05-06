@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions/v2';
 import OpenAI from 'openai';
-import { logLogs, logTime } from './utils';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
+import { logLogs, logTime } from './utils';
 
 // Get environment variables for OpenAI
 const openaitoken = process.env.OPENAI_API_KEY ?? '';
