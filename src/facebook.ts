@@ -22,7 +22,7 @@ export const facebookGraphRequest = async (
   method: string,
 ) => {
   try {
-    const url = `https://graph.facebook.com/v16.0/${endpoint}${
+    const url = `https://graph.facebook.com/v22.0/${endpoint}${
       endpoint.includes('?') ? '' : '?'
     }access_token=${pageAccessToken}`;
 
