@@ -61,7 +61,6 @@ node_modules/
 .env*
 
 .DS_Store
-.gitignore
 test/facebook_messages.json
 facebook_messages.json
 test/output
@@ -81,3 +80,5 @@ typings/
 # Node.js dependency directory
 node_modules/
 hide/
+
+copilot-instructions.md
