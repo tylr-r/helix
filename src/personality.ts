@@ -1,4 +1,5 @@
 import * as functions from 'firebase-functions/v2';
+import { updatePersonalityInDB } from './database';
 import { PlatformType, getPreviousMessages } from './facebook';
 import { openAiRequest } from './openai';
 import { getHumanReadableDate } from './utils';
@@ -135,16 +136,15 @@ async function generatePersonalityAnalysis(
 }
 
 /**
- * Analyzes messages to generate personality insights and writes to Notion
- * Returns the personality data for database storage in index.ts
+ * Analyzes messages to generate personality insights and writes to Notion and DB
  */
-export const getPersonalityAnalysis = async (
+export const createPersonalityAnalysis = async (
   name: string,
   userId: string,
   system: string,
   platform: PlatformType,
   requestId: string,
-): Promise<any> => {
+): Promise<void> => {
   try {
     // Fetch conversation messages
     const thread = await getPreviousMessages(userId, 10, platform, requestId);
@@ -171,12 +171,13 @@ export const getPersonalityAnalysis = async (
       requestId,
     );
 
-    // Store in Notion
+    // If successful, store in Notion and DB
     await updateNotionWithPersonality(personalityAnalysis);
+    await updatePersonalityInDB(userId, JSON.stringify(personalityAnalysis));
 
-    return personalityAnalysis;
+    return;
   } catch (error: any) {
-    functions.logger.error(`getPersonalityAnalysis failed: ${error}`);
-    return null;
+    functions.logger.error(`createPersonalityAnalysis failed: ${error}`);
+    return;
   }
 };

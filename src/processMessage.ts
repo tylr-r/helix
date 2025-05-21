@@ -1,18 +1,13 @@
 import * as functions from 'firebase-functions/v2';
 import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
-import {
-  getPersonality,
-  updateLastThreadId,
-  updatePersonality,
-} from './database';
+import { getPersonality, updateLastThreadId } from './database';
 import { PlatformType } from './facebook';
-import { openAiResponsesRequest, updateAssistant } from './openai';
-import { getPersonalityAnalysis } from './personality';
+import { openAiResponsesRequest } from './openai';
+import { createPersonalityAnalysis } from './personality';
 import { getHumanReadableDate, logLogs, logTime } from './utils';
 
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
-const assistantId = process.env.ASSISTANT_ID;
 
 export const getPrimer = async (requestId: string) => {
   const start = Date.now();
@@ -95,14 +90,7 @@ export const processMessage = async (
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
   logLogs(`Instructions: ${instructions}`, requestId);
 
-  // Update assistant with instructions
-  const shouldUpdateAssistant = false;
-  if (shouldUpdateAssistant) {
-    await updateAssistant(instructions, assistantId ?? '', requestId);
-  } else {
-    logLogs('Assistant update skipped.', requestId);
-  }
-
+  // Create response message
   await openAiResponsesRequest(
     [
       { role: 'system', content: instructions },
@@ -126,17 +114,13 @@ export const processMessage = async (
       const newLatestThreadId = responsesResponse?.id;
       updateLastThreadId(userId, newLatestThreadId, name, requestId);
 
-      // Get personality analysis and store it in database
-      const personalityData = await getPersonalityAnalysis(
+      createPersonalityAnalysis(
         name,
         userId,
         system[0].content,
         platform,
         requestId,
       );
-      if (personalityData) {
-        await updatePersonality(userId, personalityData);
-      }
 
       return response;
     })

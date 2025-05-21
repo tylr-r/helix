@@ -80,11 +80,11 @@ const app = async (req, res) => {
         (async () => {
           try {
             // Wait 3 seconds before marking as seen
-            await new Promise((resolve) => setTimeout(resolve, 3000));
+            // await new Promise((resolve) => setTimeout(resolve, 3000));
             await sendMessengerReceipt(userId, 'mark_seen', requestId);
 
             // Wait 5 seconds before showing typing indicator
-            await new Promise((resolve) => setTimeout(resolve, 5000));
+            // await new Promise((resolve) => setTimeout(resolve, 5000));
             await sendMessengerReceipt(userId, 'typing_on', requestId);
           } catch (error) {
             functions.logger.error(

@@ -118,7 +118,7 @@ export const getStoredInfo = async (
 /**
  * Updates or creates a personality entry for a user
  */
-export const updatePersonality = async (
+export const updatePersonalityInDB = async (
   userId: string,
   personalityData: string,
 ) => {
