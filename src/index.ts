@@ -7,18 +7,27 @@ import {
   sendMessengerReceipt,
 } from './facebook';
 import { processMessage } from './processMessage';
-import { logLogs, logTime, logs, timeLogs } from './utils';
+import {
+  clearLogs,
+  clearTimeLogs,
+  getLogs,
+  getTimeLogs,
+  logLogs,
+  logTime,
+} from './utils';
 import { handleWhatsAppWebhook } from './whatsappHandler';
 
 const verifyToken = process.env.VERIFY_TOKEN;
 
 const app = async (req, res) => {
   const startTime = Date.now();
-  logLogs('running app function!');
+  // Generate a unique requestId for this invocation
+  const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  logLogs('running app function!', requestId);
   functions.logger.info(JSON.stringify(req.body));
   // Webhook verification
   if (req.method === 'GET') {
-    logLogs('Processing GET request');
+    logLogs('Processing GET request', requestId);
     functions.logger.info('Request body:', JSON.stringify(req.body));
 
     const mode = req.query['hub.mode'];
@@ -27,7 +36,7 @@ const app = async (req, res) => {
 
     if (mode && token) {
       if (mode === 'subscribe' && token === verifyToken) {
-        logLogs('WEBHOOK_VERIFIED');
+        logLogs('WEBHOOK_VERIFIED', requestId);
         return res.status(200).send(challenge);
       }
       return res.sendStatus(403);
@@ -36,7 +45,7 @@ const app = async (req, res) => {
   }
   if (req.method === 'POST') {
     res.sendStatus(200);
-    logLogs('Processing POST request');
+    logLogs('Processing POST request', requestId);
     let platform: PlatformType;
 
     switch (req.body.object) {
@@ -54,11 +63,11 @@ const app = async (req, res) => {
     }
     // WhatsApp
     if (platform === 'whatsapp') {
-      logLogs('Processing whatsapp request');
-      return await handleWhatsAppWebhook(req);
+      logLogs('Processing whatsapp request', requestId);
+      return await handleWhatsAppWebhook(req, requestId);
     }
     // Messenger or Instagram
-    logLogs('Processing page request');
+    logLogs('Processing page request', requestId);
     const entry = req.body.entry[0];
     if (entry.messaging) {
       const userId = entry.messaging[0].sender.id;
@@ -72,11 +81,11 @@ const app = async (req, res) => {
           try {
             // Wait 3 seconds before marking as seen
             await new Promise((resolve) => setTimeout(resolve, 3000));
-            await sendMessengerReceipt(userId, 'mark_seen');
+            await sendMessengerReceipt(userId, 'mark_seen', requestId);
 
             // Wait 5 seconds before showing typing indicator
             await new Promise((resolve) => setTimeout(resolve, 5000));
-            await sendMessengerReceipt(userId, 'typing_on');
+            await sendMessengerReceipt(userId, 'typing_on', requestId);
           } catch (error) {
             functions.logger.error(
               `Error sending Messenger receipts: ${error}`,
@@ -86,16 +95,16 @@ const app = async (req, res) => {
         })();
       }
       // Get user info
-      const userInfo = await getStoredInfo(userId, platform);
+      const userInfo = await getStoredInfo(userId, platform, requestId);
       const lastThreadId: string | null = userInfo.thread.id;
       const name = userInfo.userName ?? 'someone';
       // Check if message is looking for an agent (only for Instagram)
       let needAgent = false;
       if (platform === 'instagram') {
-        needAgent = await checkIfNeedAgent(msgBody, userId);
+        needAgent = await checkIfNeedAgent(msgBody, userId, requestId);
       }
       if (needAgent) {
-        return logLogs('Agent needed');
+        return logLogs('Agent needed', requestId);
       }
       const aiResponse = await processMessage(
         messageId,
@@ -105,19 +114,22 @@ const app = async (req, res) => {
         attachment,
         name,
         lastThreadId,
+        requestId,
       );
       if (platform === 'messenger') {
-        await sendMessengerReceipt(userId, 'typing_off');
+        await sendMessengerReceipt(userId, 'typing_off', requestId);
       }
-      await sendMessengerMessage(userId, aiResponse, platform);
-      logTime(startTime, 'Whole function time:');
-      functions.logger.log(logs);
-      functions.logger.log(timeLogs);
+      await sendMessengerMessage(userId, aiResponse, platform, requestId);
+      await logTime(startTime, 'Whole function time:', requestId);
+      functions.logger.log(getLogs(requestId));
+      functions.logger.log(getTimeLogs(requestId));
+      clearLogs(requestId);
+      clearTimeLogs(requestId);
       return functions.logger.log('Finished Messenger function');
     }
-    return logLogs('Not a message');
+    return logLogs('Not a message', requestId);
   }
-  return logLogs('Running for no reason...');
+  return logLogs('Running for no reason...', requestId);
 };
 
 export const webhook = functions.https.onRequest(app);

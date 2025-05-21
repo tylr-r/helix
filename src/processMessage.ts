@@ -14,7 +14,7 @@ const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 const assistantId = process.env.ASSISTANT_ID;
 
-export const getPrimer = async () => {
+export const getPrimer = async (requestId: string) => {
   const start = Date.now();
   try {
     const response = await fetch(
@@ -32,7 +32,7 @@ export const getPrimer = async () => {
     const primerText = data.code.rich_text[0].plain_text;
     try {
       const parsedPrimer = JSON.parse(primerText);
-      logTime(start, 'getPrimer');
+      logTime(start, 'getPrimer', requestId);
       return parsedPrimer;
     } catch (error) {
       functions.logger.error(`Error parsing primer text: ${error}`);
@@ -54,6 +54,7 @@ export const getPrimer = async () => {
  * @param attachment - Any media or attachment data from the message
  * @param name - The user's display name
  * @param lastThreadId - The last thread/conversation ID for context
+ * @param requestId - Unique request identifier for logging
  * @returns Promise<string> - The AI-generated response to send back to the user
  */
 export const processMessage = async (
@@ -64,11 +65,12 @@ export const processMessage = async (
   attachment: any,
   name: string,
   lastThreadId: string | null,
+  requestId: string,
 ): Promise<string> => {
-  logLogs(`Message from ${platform}:  ${msgBody}`);
-  logLogs('user info: ' + JSON.stringify(name));
+  logLogs(`Message from ${platform}:  ${msgBody}`, requestId);
+  logLogs('user info: ' + JSON.stringify(name), requestId);
   // Get primer json from notion
-  const { system, primer, reminder } = await getPrimer();
+  const { system, primer, reminder } = await getPrimer(requestId);
   let userMessage: ResponseInputMessageContentList | string = msgBody;
   let instructions = '';
   const currentTime = getHumanReadableDate();
@@ -91,14 +93,14 @@ export const processMessage = async (
   );
   const personalityString = `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
-  logLogs(`Instructions: ${instructions}`);
+  logLogs(`Instructions: ${instructions}`, requestId);
 
   // Update assistant with instructions
   const shouldUpdateAssistant = false;
   if (shouldUpdateAssistant) {
-    await updateAssistant(instructions, assistantId ?? '');
+    await updateAssistant(instructions, assistantId ?? '', requestId);
   } else {
-    logLogs('Assistant update skipped.');
+    logLogs('Assistant update skipped.', requestId);
   }
 
   await openAiResponsesRequest(
@@ -107,6 +109,7 @@ export const processMessage = async (
       { role: 'user', content: userMessage },
       { role: 'system', content: customReminder },
     ],
+    requestId,
     imageUrl ? 'gpt-4.1' : 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
     4000,
     1,
@@ -115,13 +118,13 @@ export const processMessage = async (
   )
     .then(async (responsesResponse) => {
       if (!responsesResponse || responsesResponse?.output_text === '') {
-        logLogs('No response from OpenAI');
+        logLogs('No response from OpenAI', requestId);
         return 'Sorry, I am having troubles lol';
       }
       response = responsesResponse.output_text;
-      logLogs(`Response: ${JSON.stringify(response)}`);
+      logLogs(`Response: ${JSON.stringify(response)}`, requestId);
       const newLatestThreadId = responsesResponse?.id;
-      updateLastThreadId(userId, newLatestThreadId, name);
+      updateLastThreadId(userId, newLatestThreadId, name, requestId);
 
       // Get personality analysis and store it in database
       const personalityData = await getPersonalityAnalysis(
@@ -129,6 +132,7 @@ export const processMessage = async (
         userId,
         system[0].content,
         platform,
+        requestId,
       );
       if (personalityData) {
         await updatePersonality(userId, personalityData);

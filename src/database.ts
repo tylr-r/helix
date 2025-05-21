@@ -11,18 +11,19 @@ export const storeNewUser = async (
   userName: string,
   platform: PlatformType,
   update = false,
+  requestId: string,
 ) => {
   const humanReadableDate = getHumanReadableDate();
   try {
     if (update) {
-      logLogs('Updating user info');
+      logLogs('Updating user info', requestId);
       database.ref(`users/${userId}`).update({
         created_at: humanReadableDate,
         userName,
         platform,
       });
     }
-    logLogs('Creating new user info');
+    logLogs('Creating new user info', requestId);
     database.ref(`users/${userId}`).set({
       created_at: humanReadableDate,
       userName,
@@ -40,11 +41,12 @@ export const updateLastThreadId = async (
   userId: string,
   thread: string | null,
   userName: string,
+  requestId: string,
 ) => {
-  logLogs('Storing latest thread id in Database');
+  logLogs('Storing latest thread id in Database', requestId);
   const lastUpdated = getHumanReadableDate();
   const id = thread;
-  logLogs(`userName: ${userName}`);
+  logLogs(`userName: ${userName}`, requestId);
   try {
     database.ref(`users/${userId}/thread`).set({
       id,
@@ -61,9 +63,10 @@ export const updateLastThreadId = async (
 export const getStoredInfo = async (
   userId: string,
   platform: PlatformType,
+  requestId: string,
 ): Promise<{ thread: { id: string | null }; userName: string }> => {
   const start = Date.now();
-  logLogs(`Getting stored info for user ${userId} on ${platform}`);
+  logLogs(`Getting stored info for user ${userId} on ${platform}`, requestId);
   try {
     const userInfo = (
       await database.ref(`users/${userId}`).once('value')
@@ -73,10 +76,10 @@ export const getStoredInfo = async (
     let threadId: string | null = null;
 
     if (!userInfo) {
-      logLogs(`No user found for ${userId}, creating new user.`);
-      userName = (await getUserName(userId, platform)) ?? 'someone';
-      await storeNewUser(userId, userName, platform, false);
-      logTime(start, `getStoredInfo (New User) for ${userId}`);
+      logLogs(`No user found for ${userId}, creating new user.`, requestId);
+      userName = (await getUserName(userId, platform, requestId)) ?? 'someone';
+      await storeNewUser(userId, userName, platform, false, requestId);
+      logTime(start, `getStoredInfo (New User) for ${userId}`, requestId);
       // New user won't have a thread ID yet
       return { thread: { id: null }, userName };
     }
@@ -85,25 +88,29 @@ export const getStoredInfo = async (
     threadId = userInfo.thread?.id ?? null;
 
     if (!userName) {
-      logLogs(`No username found for user ${userId}. Fetching and updating.`);
-      userName = (await getUserName(userId, platform)) ?? 'someone';
-      await storeNewUser(userId, userName, platform, true);
+      logLogs(
+        `No username found for user ${userId}. Fetching and updating.`,
+        requestId,
+      );
+      userName = (await getUserName(userId, platform, requestId)) ?? 'someone';
+      await storeNewUser(userId, userName, platform, true, requestId);
     }
 
     if (!threadId) {
-      logLogs(`No thread ID found for user ${userId}.`);
-      logTime(start, `getStoredInfo (No Thread) for ${userId}`);
+      logLogs(`No thread ID found for user ${userId}.`, requestId);
+      logTime(start, `getStoredInfo (No Thread) for ${userId}`, requestId);
       return { thread: { id: null }, userName };
     }
 
-    logTime(start, `getStoredInfo (Existing User) for ${userId}`);
+    logTime(start, `getStoredInfo (Existing User) for ${userId}`, requestId);
     return { thread: { id: threadId }, userName };
   } catch (error) {
     functions.logger.error(
       `Error getting stored info for user ${userId}: ${error}`,
     );
-    logTime(start, `getStoredInfo (Error) for ${userId}`);
-    const fallbackUserName = (await getUserName(userId, platform)) ?? 'someone';
+    logTime(start, `getStoredInfo (Error) for ${userId}`, requestId);
+    const fallbackUserName =
+      (await getUserName(userId, platform, requestId)) ?? 'someone';
     return { thread: { id: null }, userName: fallbackUserName };
   }
 };

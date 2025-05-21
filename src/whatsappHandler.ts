@@ -7,7 +7,7 @@ import {
 import { processMessage } from './processMessage';
 import { logLogs } from './utils';
 
-export const handleWhatsAppWebhook = async (req: any) => {
+export const handleWhatsAppWebhook = async (req: any, requestId: string) => {
   if (
     req.body.entry &&
     req.body.entry[0].changes &&
@@ -15,7 +15,7 @@ export const handleWhatsAppWebhook = async (req: any) => {
     req.body.entry[0].changes[0].value &&
     req.body.entry[0].changes[0].value.status
   ) {
-    return logLogs('Status change');
+    return logLogs('Status change', requestId);
   } else if (
     req.body.entry &&
     req.body.entry[0].changes &&
@@ -25,9 +25,9 @@ export const handleWhatsAppWebhook = async (req: any) => {
   ) {
     const { messageId, userId, msgBody, name, phoneNumberId, msgId } =
       extractWhatsAppMessageDetails(req);
-    sendWhatsAppReceipt(phoneNumberId, msgId);
+    sendWhatsAppReceipt(phoneNumberId, msgId, requestId);
     // Get user info
-    const userInfo = await getStoredInfo(userId, 'whatsapp');
+    const userInfo = await getStoredInfo(userId, 'whatsapp', requestId);
     const aiResponse = await processMessage(
       messageId,
       userId,
@@ -36,9 +36,10 @@ export const handleWhatsAppWebhook = async (req: any) => {
       null,
       name,
       userInfo.thread.id ?? null,
+      requestId,
     );
-    await sendWhatsAppMessage(phoneNumberId, userId, aiResponse);
-    return logLogs('Finished WhatsApp function');
+    await sendWhatsAppMessage(phoneNumberId, userId, aiResponse, requestId);
+    return logLogs('Finished WhatsApp function', requestId);
   }
-  return logLogs('Not a status change or message');
+  return logLogs('Not a status change or message', requestId);
 };

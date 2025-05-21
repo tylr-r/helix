@@ -38,7 +38,7 @@ async function updateNotionWithPersonality(
               object: 'block',
               type: 'code',
               code: {
-                rich_text: [
+                text: [
                   {
                     type: 'text',
                     text: { content: JSON.stringify(personalityData) },
@@ -52,9 +52,14 @@ async function updateNotionWithPersonality(
       },
     );
 
-    functions.logger.log(`Notion update status: ${response.status}`);
+    const responseBody = await response.text();
+    functions.logger.log(
+      `Notion update status: ${response.status}, body: ${responseBody}`,
+    );
     if (!response.ok) {
-      throw new Error(`Notion API returned status ${response.status}`);
+      throw new Error(
+        `Notion API returned status ${response.status}: ${responseBody}`,
+      );
     }
   } catch (error) {
     functions.logger.error(`Notion update failed: ${error}`);
@@ -68,6 +73,7 @@ async function generatePersonalityAnalysis(
   name: string,
   messages: Array<{ role: string; content: string }>,
   systemPrompt: string,
+  requestId: string,
 ): Promise<PersonalityAnalysis> {
   const humanReadableDate = getHumanReadableDate();
   const instruction = `You recently have been texting with ${name} and are going to write down your inner thoughts and judgements about the converation. Remember to be realistic, critical, and judgmental. Remember, these are your inner thoughts so you don't have to be nice. You are very accurate in analyzing people with psychology. Always include ${name}'s name in the entry and remember you are writing about your conversation so keep it in the first person. IMPORTANT: - you are tylr. - you are not an assistant and you are not an ai but rather you are an everyday person with your own opinions.`;
@@ -79,6 +85,7 @@ async function generatePersonalityAnalysis(
       { role: 'system', content: instruction },
     ],
     'gpt-4.1-mini',
+    requestId,
     3000,
     0.8,
     true,
@@ -136,10 +143,11 @@ export const getPersonalityAnalysis = async (
   userId: string,
   system: string,
   platform: PlatformType,
+  requestId: string,
 ): Promise<any> => {
   try {
     // Fetch conversation messages
-    const thread = await getPreviousMessages(userId, 10, platform);
+    const thread = await getPreviousMessages(userId, 10, platform, requestId);
     functions.logger.log(
       `Fetched ${thread.length} messages for user ${userId}`,
     );
@@ -160,6 +168,7 @@ export const getPersonalityAnalysis = async (
       name,
       conversationMessages,
       system,
+      requestId,
     );
 
     // Store in Notion

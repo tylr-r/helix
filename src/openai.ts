@@ -18,6 +18,7 @@ const openai = new OpenAI(configuration);
 export const openAiRequest = async (
   messages: any[],
   model: string,
+  requestId: string,
   max_tokens?: number,
   temperature?: number,
   function_call?: boolean,
@@ -27,7 +28,7 @@ export const openAiRequest = async (
   let completion;
   try {
     if (function_call && ai_functions !== undefined) {
-      logLogs('Starting openai function call');
+      logLogs('Starting openai function call', requestId);
       const name = ai_functions[0].name;
       completion = await openai.chat.completions
         .create({
@@ -45,10 +46,10 @@ export const openAiRequest = async (
         });
       functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
       const result = completion?.choices[0].message.function_call.arguments;
-      await logTime(start, 'openAiRequest');
+      await logTime(start, 'openAiRequest', requestId);
       return result;
     } else {
-      logLogs('Starting normal openai call');
+      logLogs('Starting normal openai call', requestId);
       functions.logger.debug(
         `normal call: ${JSON.stringify({
           model,
@@ -67,7 +68,7 @@ export const openAiRequest = async (
         .catch((error) => {
           functions.logger.error(`Error sending to OpenAI: ${error}`);
         });
-      await logTime(start, 'openAiRequest');
+      await logTime(start, 'openAiRequest', requestId);
       return completion?.choices?.[0]?.message?.content;
     }
   } catch (error) {
@@ -78,6 +79,7 @@ export const openAiRequest = async (
 
 export const openAiResponsesRequest = async (
   input: ResponseInput,
+  requestId: string,
   model = 'gpt-4.1',
   max_output_tokens = 4000,
   temperature = 1,
@@ -96,6 +98,7 @@ export const openAiResponsesRequest = async (
         `Starting openai responses API call (attempt ${
           attempts + 1
         }/${retry_attempts})`,
+        requestId,
       );
       if (attempts > 0) {
         previousResponseId = null;
@@ -143,7 +146,7 @@ export const openAiResponsesRequest = async (
       functions.logger.info(
         `Responses API successful with input: ${JSON.stringify(input)}`,
       );
-      await logTime(start, 'openAiResponsesRequest');
+      await logTime(start, 'openAiResponsesRequest', requestId);
 
       if (response) {
         return response;
@@ -190,15 +193,16 @@ export const openAiResponsesRequest = async (
 export const updateAssistant = async (
   instructions: string,
   assistantId: string,
+  requestId: string,
 ) => {
   const start = Date.now();
-  logLogs('Updating assistant');
+  logLogs('Updating assistant', requestId);
   try {
     const res = await openai.beta.assistants.update(assistantId, {
       instructions,
     });
-    logTime(start, 'updateAssistant');
-    logLogs(`Assistant updated: ${JSON.stringify(res)}`);
+    logTime(start, 'updateAssistant', requestId);
+    logLogs(`Assistant updated: ${JSON.stringify(res)}`, requestId);
     return res;
   } catch (error) {
     functions.logger.error(`Error updating assistant: ${error}`);

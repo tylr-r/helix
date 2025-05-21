@@ -50,8 +50,9 @@ export const facebookGraphRequest = async (
 export const getUserName = async (
   userId: string,
   platform: PlatformType,
+  requestId: string,
 ): Promise<string> => {
-  logLogs(`Getting user name for ${platform} userId: ${userId}`);
+  logLogs(`Getting user name for ${platform} userId: ${userId}`, requestId);
   const start = Date.now();
   const isMessenger = platform === 'messenger';
   const endpoint = isMessenger
@@ -63,7 +64,7 @@ export const getUserName = async (
     `Error while getting user name for ${platform}`,
     'GET',
   );
-  logTime(start, 'getUserName');
+  logTime(start, 'getUserName', requestId);
   const name = isMessenger
     ? userInfo?.data[0].senders.data[0].name
     : userInfo?.data[0].name;
@@ -74,9 +75,13 @@ export const getPreviousMessages = async (
   userId: string,
   limit = 10,
   platform: PlatformType,
+  requestId: string,
 ): Promise<MessageThread> => {
   const start = Date.now();
-  logLogs(`Getting previous messages for ${platform} userId: ${userId}`);
+  logLogs(
+    `Getting previous messages for ${platform} userId: ${userId}`,
+    requestId,
+  );
   const endpoint =
     platform === 'messenger'
       ? `me/conversations?fields=messages.limit(${limit}){from,message}&user_id=${userId}&`
@@ -90,8 +95,8 @@ export const getPreviousMessages = async (
   );
 
   const messageThread = response?.data[0].messages.data as MessageThread;
-  logLogs(`Previous messages: ${JSON.stringify(messageThread)}`);
-  logTime(start, 'getPreviousMessages');
+  logLogs(`Previous messages: ${JSON.stringify(messageThread)}`, requestId);
+  logTime(start, 'getPreviousMessages', requestId);
   return messageThread;
 };
 
@@ -99,8 +104,9 @@ export const getPreviousMessages = async (
 export const sendWhatsAppReceipt = async (
   phone_number_id: string,
   msgId: string,
+  requestId: string,
 ) => {
-  logLogs(`Sending WhatsApp read receipt for message: ${msgId}`);
+  logLogs(`Sending WhatsApp read receipt for message: ${msgId}`, requestId);
   const start = Date.now();
   await facebookGraphRequest(
     `${phone_number_id}/messages?`,
@@ -112,16 +118,18 @@ export const sendWhatsAppReceipt = async (
     'Error while marking WhatsApp as seen',
     'POST',
   );
-  logTime(start, 'sendWhatsAppReceipt');
+  logTime(start, 'sendWhatsAppReceipt', requestId);
 };
 
 // Send Messenger receipt
 export const sendMessengerReceipt = async (
   userId: string,
   sender_action: string,
+  requestId: string,
 ) => {
   logLogs(
     `Sending Messenger receipt to ${userId} with action: ${sender_action}`,
+    requestId,
   );
   const start = Date.now();
   await facebookGraphRequest(
@@ -133,7 +141,7 @@ export const sendMessengerReceipt = async (
     `Error while sending Messenger action: ${sender_action}`,
     'POST',
   );
-  logTime(start, 'sendMessengerReceipt');
+  logTime(start, 'sendMessengerReceipt', requestId);
 };
 
 // Send Messenger message
@@ -141,8 +149,9 @@ export const sendMessengerMessage = async (
   userId: string,
   response: string,
   platform: string,
+  requestId: string,
 ) => {
-  logLogs(`Sending ${platform} message to ${userId}`);
+  logLogs(`Sending ${platform} message to ${userId}`, requestId);
   const start = Date.now();
   await facebookGraphRequest(
     'me/messages?',
@@ -153,7 +162,7 @@ export const sendMessengerMessage = async (
     `Error while sending ${platform} message`,
     'POST',
   );
-  logTime(start, 'sendMessengerMessage');
+  logTime(start, 'sendMessengerMessage', requestId);
 };
 
 // Send WhatsApp message
@@ -161,8 +170,9 @@ export const sendWhatsAppMessage = async (
   phoneNumberId: string,
   userId: string,
   response: string,
+  requestId: string,
 ) => {
-  logLogs('Sending WhatsApp message');
+  logLogs('Sending WhatsApp message', requestId);
   const start = Date.now();
   await facebookGraphRequest(
     `${phoneNumberId}/messages?`,
@@ -174,7 +184,7 @@ export const sendWhatsAppMessage = async (
     'Error while sending WhatsApp message',
     'POST',
   );
-  logTime(start, 'sendWhatsAppMessage');
+  logTime(start, 'sendWhatsAppMessage', requestId);
 };
 
 // Extract WhatsApp message details from request
