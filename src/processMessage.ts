@@ -1,7 +1,12 @@
 import * as functions from 'firebase-functions/v2';
-import { ResponseInputMessageContentList } from 'openai/resources/responses/responses';
+import {
+  ResponseInputContent,
+  ResponseInputImage,
+  ResponseInputItem,
+  ResponseInputText,
+} from 'openai/resources/responses/responses';
 import { getPersonality, updateLastThreadId } from './database';
-import { PlatformType } from './facebook';
+import { getPreviousMessages, MessageThread, PlatformType } from './facebook';
 import { openAiResponsesRequest } from './openai';
 import { createPersonalityAnalysis } from './personality';
 import { getHumanReadableDate, logLogs, logTime } from './utils';
@@ -66,21 +71,11 @@ export const processMessage = async (
   logLogs('user info: ' + JSON.stringify(name), requestId);
   // Get primer json from notion
   const { system, primer, reminder } = await getPrimer(requestId);
-  let userMessage: ResponseInputMessageContentList | string = msgBody;
   let instructions = '';
   const currentTime = getHumanReadableDate();
   let response = 'Sorry, I am having troubles lol';
   const customReminder = `You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
   const imageUrl: string = attachment?.[0]?.payload?.url;
-  if (imageUrl) {
-    userMessage = [
-      {
-        type: 'input_image',
-        image_url: imageUrl,
-        detail: 'auto',
-      },
-    ];
-  }
 
   const personalitySnapshot = await getPersonality(userId);
   functions.logger.info(
@@ -90,19 +85,95 @@ export const processMessage = async (
   instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
   logLogs(`Instructions: ${instructions}`, requestId);
 
+  const systemInstructionMessage: ResponseInputItem.Message = {
+    role: 'system',
+    content: [{ type: 'input_text', text: instructions } as ResponseInputText],
+    type: 'message',
+  };
+
+  let formattedPreviousMessages: ResponseInputItem.Message[] = [];
+  if (platform === 'messenger') {
+    try {
+      const previousMessages: MessageThread | null = await getPreviousMessages(
+        userId,
+        20, // Fetch last 20 messages
+        platform,
+        requestId,
+      );
+
+      if (previousMessages && previousMessages.length > 0) {
+        // Remove the most recent message (last in the array)
+        const previousMessagesWithoutLatest = previousMessages.slice(0, -1);
+        formattedPreviousMessages = previousMessagesWithoutLatest
+          .reverse() // oldest first
+          .map(
+            (msg): ResponseInputItem.Message => ({
+              // Map assistant to user, or handle as per API capabilities if needed
+              role: msg.from.id === userId ? 'user' : 'user', // Changed assistant to user
+              content: [
+                { type: 'input_text', text: msg.message } as ResponseInputText,
+              ],
+              type: 'message',
+            }),
+          );
+        logLogs(
+          `Added ${formattedPreviousMessages.length} previous messages to context (excluding latest).`,
+          requestId,
+        );
+      }
+    } catch (error) {
+      functions.logger.error(
+        `Error fetching previous messages: ${error}`,
+        requestId,
+      );
+    }
+  }
+
+  let userMessageContentParts: Array<ResponseInputContent>;
+  if (imageUrl) {
+    userMessageContentParts = [
+      {
+        type: 'input_image',
+        image_url: imageUrl,
+        detail: 'auto',
+      } as ResponseInputImage,
+    ];
+  } else {
+    userMessageContentParts = [
+      { type: 'input_text', text: msgBody } as ResponseInputText,
+    ];
+  }
+
+  const latestUserMessage: ResponseInputItem.Message = {
+    role: 'user',
+    content: userMessageContentParts,
+    type: 'message',
+  };
+
+  const customReminderMessage: ResponseInputItem.Message = {
+    role: 'system',
+    content: [
+      { type: 'input_text', text: customReminder } as ResponseInputText,
+    ],
+    type: 'message',
+  };
+
+  const messagesForOpenAI: ResponseInputItem[] = [
+    systemInstructionMessage,
+    ...formattedPreviousMessages,
+    latestUserMessage,
+    customReminderMessage,
+  ];
+
   // Create response message
   await openAiResponsesRequest(
-    [
-      { role: 'system', content: instructions },
-      { role: 'user', content: userMessage },
-      { role: 'system', content: customReminder },
-    ],
+    messagesForOpenAI,
     requestId,
     imageUrl ? 'gpt-4.1' : 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
     4000,
     1,
     true,
-    lastThreadId,
+    formattedPreviousMessages.length > 0 ? null : lastThreadId,
   )
     .then(async (responsesResponse) => {
       if (!responsesResponse || responsesResponse?.output_text === '') {
