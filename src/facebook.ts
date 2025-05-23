@@ -9,6 +9,7 @@ export type MessageThread = {
     id: string;
   };
   message: string;
+  created_time: string;
   id: string;
 }[];
 
@@ -73,7 +74,7 @@ export const getUserName = async (
 
 export const getPreviousMessages = async (
   userId: string,
-  limit = 10,
+  limit: number,
   platform: PlatformType,
   requestId: string,
 ): Promise<MessageThread> => {
@@ -84,8 +85,8 @@ export const getPreviousMessages = async (
   );
   const endpoint =
     platform === 'messenger'
-      ? `me/conversations?fields=messages.limit(${limit}){from,message}&user_id=${userId}&`
-      : `me/conversations?fields=messages.limit(${limit}){from,message}&platform=instagram&user_id=${userId}&`;
+      ? `me/conversations?fields=messages.limit(${limit}){from,message,created_time}&user_id=${userId}&`
+      : `me/conversations?fields=messages.limit(${limit}){from,message,created_time}&platform=instagram&user_id=${userId}&`;
 
   const response = await facebookGraphRequest(
     endpoint,

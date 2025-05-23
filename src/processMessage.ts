@@ -1,15 +1,9 @@
 import * as functions from 'firebase-functions/v2';
-import {
-  ResponseInputContent,
-  ResponseInputImage,
-  ResponseInputItem,
-  ResponseInputText,
-} from 'openai/resources/responses/responses';
 import { getPersonality, updateLastThreadId } from './database';
 import { getPreviousMessages, MessageThread, PlatformType } from './facebook';
 import { openAiResponsesRequest } from './openai';
 import { createPersonalityAnalysis } from './personality';
-import { getHumanReadableDate, logLogs, logTime } from './utils';
+import { getHumanReadableDate, getTimeSince, logLogs, logTime } from './utils';
 
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
@@ -70,11 +64,11 @@ export const processMessage = async (
   logLogs(`Message from ${platform}:  ${msgBody}`, requestId);
   logLogs('user info: ' + JSON.stringify(name), requestId);
   // Get primer json from notion
-  const { system, primer, reminder } = await getPrimer(requestId);
+  const { system } = await getPrimer(requestId);
   let instructions = '';
   const currentTime = getHumanReadableDate();
   let response = 'Sorry, I am having troubles lol';
-  const customReminder = `You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
+  let customReminder = `You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
   const imageUrl: string = attachment?.[0]?.payload?.url;
 
   const personalitySnapshot = await getPersonality(userId);
@@ -82,44 +76,50 @@ export const processMessage = async (
     `recent thoughts: ${JSON.stringify(personalitySnapshot)}`,
   );
   const personalityString = `These are your most recent thoughts: ${personalitySnapshot?.personality}`;
-  instructions = `${system[0].content} | ${primer[0].content} | ${personalityString} | ${reminder[0].content}`;
+  instructions = `${system[0].content} | ${personalityString}`;
   logLogs(`Instructions: ${instructions}`, requestId);
 
-  const systemInstructionMessage: ResponseInputItem.Message = {
+  const systemInstructionMessage = {
     role: 'system',
-    content: [{ type: 'input_text', text: instructions } as ResponseInputText],
-    type: 'message',
+    content: instructions,
   };
 
-  let formattedPreviousMessages: ResponseInputItem.Message[] = [];
+  let formattedPreviousMessages;
   if (platform === 'messenger') {
     try {
-      const previousMessages: MessageThread | null = await getPreviousMessages(
-        userId,
-        20, // Fetch last 20 messages
-        platform,
-        requestId,
-      );
+      const previousMessagesReverse: MessageThread | null =
+        await getPreviousMessages(
+          userId,
+          20, // Fetch last 20 messages
+          platform,
+          requestId,
+        );
+      const previousMessages = previousMessagesReverse.reverse();
 
       if (previousMessages && previousMessages.length > 0) {
         // Remove the most recent message (last in the array)
-        const previousMessagesWithoutLatest = previousMessages.slice(0, -1);
-        formattedPreviousMessages = previousMessagesWithoutLatest
-          .reverse() // oldest first
-          .map(
-            (msg): ResponseInputItem.Message => ({
-              // Map assistant to user, or handle as per API capabilities if needed
-              role: msg.from.id === userId ? 'user' : 'user', // Changed assistant to user
-              content: [
-                { type: 'input_text', text: msg.message } as ResponseInputText,
-              ],
-              type: 'message',
-            }),
-          );
+        const previousMessagesWithoutLatest = previousMessages
+          .reverse()
+          .slice(0, -1);
+        formattedPreviousMessages = previousMessagesWithoutLatest.map(
+          (msg) => ({
+            role: msg.from.id === userId ? 'user' : 'assistant',
+            content: msg.message,
+          }),
+        );
+        // Calculate time since last message
         logLogs(
-          `Added ${formattedPreviousMessages.length} previous messages to context (excluding latest).`,
+          `last message sent: ${JSON.stringify(previousMessages[1])}`,
           requestId,
         );
+        const lastCreatedTime = previousMessages[1].created_time;
+        let timeSinceLastMessage = '';
+        if (lastCreatedTime) {
+          const lastDate = new Date(lastCreatedTime);
+          timeSinceLastMessage = getTimeSince(lastDate);
+        }
+        customReminder += ` The time since the last message is ${timeSinceLastMessage}.`;
+        logLogs(`Time since last message: ${timeSinceLastMessage}`, requestId);
       }
     } catch (error) {
       functions.logger.error(
@@ -129,41 +129,40 @@ export const processMessage = async (
     }
   }
 
-  let userMessageContentParts: Array<ResponseInputContent>;
+  let userMessageContentParts;
   if (imageUrl) {
     userMessageContentParts = [
       {
         type: 'input_image',
         image_url: imageUrl,
         detail: 'auto',
-      } as ResponseInputImage,
+      },
     ];
   } else {
-    userMessageContentParts = [
-      { type: 'input_text', text: msgBody } as ResponseInputText,
-    ];
+    userMessageContentParts = msgBody;
   }
 
-  const latestUserMessage: ResponseInputItem.Message = {
+  const latestUserMessage = {
     role: 'user',
     content: userMessageContentParts,
-    type: 'message',
   };
 
-  const customReminderMessage: ResponseInputItem.Message = {
+  const customReminderMessage = {
     role: 'system',
-    content: [
-      { type: 'input_text', text: customReminder } as ResponseInputText,
-    ],
-    type: 'message',
+    content: customReminder,
   };
 
-  const messagesForOpenAI: ResponseInputItem[] = [
+  const messagesForOpenAI = [
     systemInstructionMessage,
     ...formattedPreviousMessages,
     latestUserMessage,
     customReminderMessage,
   ];
+
+  logLogs(
+    `Messages for OpenAI: ${JSON.stringify(messagesForOpenAI)}`,
+    requestId,
+  );
 
   // Create response message
   await openAiResponsesRequest(
