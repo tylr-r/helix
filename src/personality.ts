@@ -39,7 +39,7 @@ async function updateNotionWithPersonality(
               object: 'block',
               type: 'code',
               code: {
-                text: [
+                rich_text: [
                   {
                     type: 'text',
                     text: { content: JSON.stringify(personalityData) },

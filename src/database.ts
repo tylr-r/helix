@@ -1,6 +1,6 @@
 import * as functions from 'firebase-functions/v2';
 import { PlatformType, getUserName } from './facebook';
-import { database } from './firebase'; // Import database from centralized Firebase module
+import { database } from './firebase';
 import { getHumanReadableDate, logLogs, logTime } from './utils';
 
 /**
