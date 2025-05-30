@@ -6,6 +6,25 @@ import { logLogs, logTime } from './utils';
 // Get environment variables for OpenAI
 const openaitoken = process.env.OPENAI_API_KEY ?? '';
 const openAiOrgId = process.env.OPENAI_ORG_ID;
+const vectorStoreId = process.env.VECTOR_STORE_ID ?? '';
+
+// Helper function to get vector store ID if configured
+const getVectorStoreIds = (): string[] => {
+  return vectorStoreId ? [vectorStoreId] : [];
+};
+
+// Helper function to extract file search results from response
+export const extractFileSearchResults = (response: any): string[] => {
+  if (!response?.file_search_call?.results) return [];
+
+  const results: string[] = [];
+  for (const result of response.file_search_call.results) {
+    if (result.content && typeof result.content === 'string') {
+      results.push(result.content);
+    }
+  }
+  return results;
+};
 
 // Configure OpenAI client
 const configuration = {
@@ -77,20 +96,45 @@ export const openAiRequest = async (
   return 'lol';
 };
 
-export const openAiResponsesRequest = async (
-  input: ResponseInput,
-  requestId: string,
-  model = 'gpt-4.1',
+interface OpenAiResponsesRequestParams {
+  instructions: string;
+  input: ResponseInput;
+  requestId: string;
+  model: string;
+  max_output_tokens?: number;
+  temperature?: number;
+  web_search?: boolean;
+  function_tools?: any[];
+  tool_choice?: 'auto' | 'required';
+  file_search?: boolean;
+  previous_response_id?: string | null;
+  retry_attempts?: number;
+  retry_delay?: number;
+}
+
+/**
+ * Sends a request to OpenAI's Responses API with retry logic and automatic file search integration.
+ */
+export const openAiResponsesRequest = async ({
+  instructions,
+  input,
+  requestId,
+  model,
   max_output_tokens = 4000,
   temperature = 1,
   web_search = false,
-  previous_response_id?: string | null,
+  function_tools,
+  tool_choice = 'auto',
+  file_search = true,
+  previous_response_id,
   retry_attempts = 3,
   retry_delay = 1000,
-) => {
+}: OpenAiResponsesRequestParams) => {
   const start = Date.now();
   let attempts = 0;
   let previousResponseId = previous_response_id;
+
+  const vectorStoreIds = file_search ? getVectorStoreIds() : [];
 
   while (attempts < retry_attempts) {
     try {
@@ -105,11 +149,14 @@ export const openAiResponsesRequest = async (
       }
       functions.logger.debug(
         `responses call: ${JSON.stringify({
+          instructions,
           model,
           input,
           max_output_tokens,
           temperature,
           web_search,
+          file_search: file_search,
+          vector_store_ids: vectorStoreIds,
           previous_response_id: previousResponseId,
         })}`,
       );
@@ -126,9 +173,27 @@ export const openAiResponsesRequest = async (
         },
       ];
 
-      const tools = web_search ? webSearchConfig : undefined;
+      const fileSearchConfig: Array<Tool> = [
+        {
+          type: 'file_search',
+          vector_store_ids: vectorStoreIds,
+        },
+      ];
+
+      // Combine tools: web search, file search, and function calls
+      const tools: Array<Tool> = [];
+      if (web_search) {
+        tools.push(...webSearchConfig);
+      }
+      if (file_search && vectorStoreIds.length > 0) {
+        tools.push(...fileSearchConfig);
+      }
+      if (function_tools && function_tools.length > 0) {
+        tools.push(...function_tools);
+      }
 
       const response = await openai.responses.create({
+        instructions,
         model,
         input,
         previous_response_id,
@@ -137,15 +202,30 @@ export const openAiResponsesRequest = async (
             type: 'text',
           },
         },
-        tools,
+        tools: tools.length > 0 ? tools : undefined,
+        parallel_tool_calls: true,
+        tool_choice,
+        truncation: 'auto',
+        include: ['file_search_call.results'],
         temperature,
         max_output_tokens,
-        top_p: 0.9,
       });
 
       functions.logger.info(
-        `Responses API successful with input: ${JSON.stringify(input)}`,
+        `Responses API successful with output: ${JSON.stringify(response)}`,
       );
+
+      // Log file search results if included
+      if (response && file_search) {
+        const fileSearchResults = extractFileSearchResults(response);
+        if (fileSearchResults.length > 0) {
+          logLogs(
+            `File search returned ${fileSearchResults.length} results`,
+            requestId,
+          );
+        }
+      }
+
       await logTime(start, 'openAiResponsesRequest', requestId);
 
       if (response) {
@@ -188,24 +268,4 @@ export const openAiResponsesRequest = async (
     `Failed to get response after ${retry_attempts} attempts`,
   );
   return null;
-};
-
-export const updateAssistant = async (
-  instructions: string,
-  assistantId: string,
-  requestId: string,
-) => {
-  const start = Date.now();
-  logLogs('Updating assistant', requestId);
-  try {
-    const res = await openai.beta.assistants.update(assistantId, {
-      instructions,
-    });
-    logTime(start, 'updateAssistant', requestId);
-    logLogs(`Assistant updated: ${JSON.stringify(res)}`, requestId);
-    return res;
-  } catch (error) {
-    functions.logger.error(`Error updating assistant: ${error}`);
-    return null;
-  }
 };

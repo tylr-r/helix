@@ -106,7 +106,7 @@ const app = async (req, res) => {
       if (needAgent) {
         return logLogs('Agent needed', requestId);
       }
-      const aiResponse = await processMessage(
+      const response = await processMessage(
         messageId,
         userId,
         msgBody,
@@ -119,7 +119,7 @@ const app = async (req, res) => {
       if (platform === 'messenger') {
         await sendMessengerReceipt(userId, 'typing_off', requestId);
       }
-      await sendMessengerMessage(userId, aiResponse, platform, requestId);
+      await sendMessengerMessage(userId, response, platform, requestId);
       await logTime(startTime, 'Whole function time:', requestId);
       functions.logger.log(getLogs(requestId));
       functions.logger.log(getTimeLogs(requestId));

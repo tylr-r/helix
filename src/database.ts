@@ -13,19 +13,16 @@ export const storeNewUser = async (
   update = false,
   requestId: string,
 ) => {
-  const humanReadableDate = getHumanReadableDate();
   try {
     if (update) {
       logLogs('Updating user info', requestId);
       database.ref(`users/${userId}`).update({
-        created_at: humanReadableDate,
         userName,
         platform,
       });
     }
     logLogs('Creating new user info', requestId);
     database.ref(`users/${userId}`).set({
-      created_at: humanReadableDate,
       userName,
       platform,
     });

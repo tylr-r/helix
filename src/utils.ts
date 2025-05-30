@@ -87,3 +87,53 @@ export function getTimeSince(
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays} day${diffDays === 1 ? '' : 's'}`;
 }
+
+/**
+ * Utility to filter out empty or error messages from a message thread.
+ * Excludes messages that are empty, whitespace, or match the default error string.
+ * @param msg - The message object with a 'message' property
+ * @returns boolean - true if the message should be included
+ */
+export function isValidMessage(msg: { message: any }): boolean {
+  return (
+    typeof msg.message === 'string' &&
+    msg.message.trim() !== '' &&
+    !msg.message.toLowerCase().includes('Sorry, I am having troubles lol')
+  );
+}
+
+/**
+ * Filters out invalid messages and the messages that come directly before them.
+ * Also clears history when a "clear" message is encountered.
+ * @param messages - Array of message objects
+ * @returns Array of filtered messages
+ */
+export function filterValidMessages<T extends { message: any }>(
+  messages: T[],
+): T[] {
+  const result: T[] = [];
+
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+
+    // If message is a "clear" command, reset the result list
+    if (
+      typeof msg.message === 'string' &&
+      msg.message.trim().toLowerCase() === 'clear'
+    ) {
+      result.length = 0;
+      continue;
+    }
+
+    // If message is invalid, remove the previous message (if any) and skip this one
+    if (!isValidMessage(msg)) {
+      result.pop(); // Remove last valid message (acts as "the message before")
+      continue;
+    }
+
+    // Otherwise, message is valid, add to result
+    result.push(msg);
+  }
+
+  return result;
+}

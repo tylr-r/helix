@@ -28,7 +28,7 @@ export const handleWhatsAppWebhook = async (req: any, requestId: string) => {
     sendWhatsAppReceipt(phoneNumberId, msgId, requestId);
     // Get user info
     const userInfo = await getStoredInfo(userId, 'whatsapp', requestId);
-    const aiResponse = await processMessage(
+    const response = await processMessage(
       messageId,
       userId,
       msgBody,
@@ -38,7 +38,7 @@ export const handleWhatsAppWebhook = async (req: any, requestId: string) => {
       userInfo.thread.id ?? null,
       requestId,
     );
-    await sendWhatsAppMessage(phoneNumberId, userId, aiResponse, requestId);
+    await sendWhatsAppMessage(phoneNumberId, userId, response, requestId);
     return logLogs('Finished WhatsApp function', requestId);
   }
   return logLogs('Not a status change or message', requestId);
