@@ -97,7 +97,7 @@ export const openAiRequest = async (
 };
 
 interface OpenAiResponsesRequestParams {
-  instructions: string;
+  instructions?: string;
   input: ResponseInput;
   requestId: string;
   model: string;
@@ -116,7 +116,7 @@ interface OpenAiResponsesRequestParams {
  * Sends a request to OpenAI's Responses API with retry logic and automatic file search integration.
  */
 export const openAiResponsesRequest = async ({
-  instructions,
+  instructions = undefined,
   input,
   requestId,
   model,

@@ -18,7 +18,12 @@ import {
 const notionToken = process.env.NOTION_TOKEN;
 const notionBlockId = process.env.NOTION_BLOCK_ID;
 
-export const getPrimer = async (requestId: string) => {
+type Primer = {
+  system: { role: string; content: string };
+  developer: { role: string; content: string };
+};
+
+export const getPrimer = async (requestId: string): Promise<Primer> => {
   const start = Date.now();
   try {
     const response = await fetch(
@@ -34,15 +39,18 @@ export const getPrimer = async (requestId: string) => {
 
     const data = await response.json();
     const primerText = data.code.rich_text[0].plain_text;
-    try {
-      const parsedPrimer = JSON.parse(primerText);
-      logTime(start, 'getPrimer', requestId);
-      return parsedPrimer;
-    } catch (error) {
-      functions.logger.error(`Error parsing primer text: ${error}`);
-    }
+    const parsedPrimer: Primer = JSON.parse(primerText);
+    logTime(start, 'getPrimer', requestId);
+    return parsedPrimer;
   } catch (error) {
-    functions.logger.error(`Error getting primer: ${error}`);
+    const errorType =
+      error instanceof SyntaxError ? 'parsing primer text' : 'getting primer';
+    functions.logger.error(`Error ${errorType}: ${error}`);
+    logLogs(`Error ${errorType}: ${error}`, requestId);
+    return {
+      system: { role: 'system', content: 'Default system prompt' },
+      developer: { role: 'developer', content: 'Default developer prompt' },
+    };
   }
 };
 
@@ -91,17 +99,16 @@ export const processMessage = async (
   }
 
   // Get primer json from notion
-  const { system } = await getPrimer(requestId);
-  const grounding = system[0].content;
-  let instructions = '';
+  const { system, developer } = await getPrimer(requestId);
+  const systemMessage: string = JSON.stringify(system.content);
+  const developerMessage: string = JSON.stringify(developer);
   const currentTime = getHumanReadableDate();
   let response = 'Sorry, I am having troubles lol';
   let customReminder = `You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
   const imageUrl: string = attachment?.[0]?.payload?.url;
 
-  instructions = `${grounding}
-  You have access to file search that will find relevant information from ${name}'s dossier. This context is provided to help you give personalized responses. Use this information to be more contextually aware and personalized in your responses.`;
-  functions.logger.log(`Instructions: ${instructions}`, requestId);
+  functions.logger.log(`system message: ${systemMessage}`, requestId);
+  functions.logger.log(`developer message: ${developerMessage}`, requestId);
 
   let formattedPreviousMessages;
   if (platform === 'messenger') {
@@ -125,6 +132,12 @@ export const processMessage = async (
           role: msg.from.id === userId ? 'user' : 'assistant',
           content: msg.message,
         }));
+        logLogs(
+          `Previous messages (formatted): ${JSON.stringify(
+            formattedPreviousMessages,
+          )}`,
+          requestId,
+        );
         // Calculate time since last message
         logLogs(
           `last message sent: ${JSON.stringify(previousMessages[1])}`,
@@ -166,11 +179,13 @@ export const processMessage = async (
   };
 
   const customReminderMessage = {
-    role: 'system',
+    role: 'developer',
     content: customReminder,
   };
 
   const messagesForOpenAI = [
+    system,
+    developer,
     ...formattedPreviousMessages,
     latestUserMessage,
     customReminderMessage,
@@ -184,7 +199,6 @@ export const processMessage = async (
   // Create user-facing response (no function calls)
   try {
     const responsesResponse = await openAiResponsesRequest({
-      instructions,
       input: messagesForOpenAI,
       requestId,
       model: imageUrl
@@ -228,7 +242,7 @@ export const processMessage = async (
     // Trigger async dossier updates
     processDossierUpdatesAsync(
       userId,
-      grounding,
+      systemMessage,
       messagesForOpenAI,
       name,
       platform,
@@ -306,7 +320,7 @@ Focus ONLY on generating relevant function calls. Do NOT provide any conversatio
       instructions: instructionsForDossier,
       input: messagesContext,
       requestId,
-      model: 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
+      model: 'gpt-4.1',
       max_output_tokens: 1000,
       temperature: 0.7,
       web_search: false,
