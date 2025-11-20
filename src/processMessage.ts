@@ -104,8 +104,11 @@ export const processMessage = async (
   const developerMessage: string = JSON.stringify(developer);
   const currentTime = getHumanReadableDate();
   let response = 'Sorry, I am having troubles lol';
-  let customReminder = `You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
+  let customReminder = `Context: The user has just sent the following message now. You are talking with ${name} on ${platform} and you are aware of the current time which may be relevant to the discussion. The current time is ${currentTime}`;
   const imageUrl: string = attachment?.[0]?.payload?.url;
+  const isImage: boolean = attachment?.[0]?.type === 'image';
+  const isLink: boolean =
+    attachment?.[0]?.type === 'fallback' && attachment?.[0]?.payload?.url;
 
   functions.logger.log(`system message: ${systemMessage}`, requestId);
   functions.logger.log(`developer message: ${developerMessage}`, requestId);
@@ -113,21 +116,26 @@ export const processMessage = async (
   let formattedPreviousMessages;
   if (platform === 'messenger') {
     try {
-      const previousMessagesReverse: MessageThread | null =
+      // Previous messages will come in in chronological order with the most recent one at the top, so we need to reverse them to get the correct order where the oldest message is first and the newest message is at the bottom.
+      const previousMessagesReversed: MessageThread | null =
         await getPreviousMessages(
           userId,
           20, // Fetch last 20 messages
           platform,
           requestId,
         );
-      const previousMessages = previousMessagesReverse.reverse();
+      // Reverse the messages to order them from oldest at the top to newest at the bottom
+      const previousMessages = previousMessagesReversed.reverse();
 
+      // Only keep messages that are not empty
       if (previousMessages && previousMessages.length > 0) {
         // Remove the most recent message (last in the array)
         const previousMessagesWithoutLatest = previousMessages.slice(0, -1);
+        // Filter out invalid messages from previousMessagesWithoutLatest
         const validMessages = filterValidMessages(
           previousMessagesWithoutLatest,
         );
+        // Map valid messages (without the latest user message) to the format expected by the AI
         formattedPreviousMessages = validMessages.map((msg) => ({
           role: msg.from.id === userId ? 'user' : 'assistant',
           content: msg.message,
@@ -140,16 +148,17 @@ export const processMessage = async (
         );
         // Calculate time since last message
         logLogs(
-          `last message sent: ${JSON.stringify(previousMessages[1])}`,
+          `last message sent: ${JSON.stringify(previousMessagesReversed[1])}`,
           requestId,
         );
-        const lastCreatedTime = previousMessages[1].created_time;
+        // Get time since the previous message (before the most recent user message) was sent
+        const lastCreatedTime = previousMessagesReversed[1].created_time;
         let timeSinceLastMessage = '';
         if (lastCreatedTime) {
           const lastDate = new Date(lastCreatedTime);
           timeSinceLastMessage = getTimeSince(lastDate);
         }
-        customReminder += ` The time since the last message is ${timeSinceLastMessage}.`;
+        customReminder += ` The previous conversational exchange was ${timeSinceLastMessage}.`;
         logLogs(`Time since last message: ${timeSinceLastMessage}`, requestId);
       }
     } catch (error) {
@@ -161,7 +170,7 @@ export const processMessage = async (
   }
 
   let userMessageContentParts;
-  if (imageUrl) {
+  if (isImage && imageUrl) {
     userMessageContentParts = [
       {
         type: 'input_image',
@@ -169,6 +178,12 @@ export const processMessage = async (
         detail: 'auto',
       },
     ];
+  } else if (isLink) {
+    const url = attachment?.[0]?.payload?.url;
+    const title = attachment?.[0]?.title;
+    userMessageContentParts = `Here's a link: ${
+      title ? `${title} - ` : ''
+    }${url}`;
   } else {
     userMessageContentParts = msgBody;
   }
@@ -187,8 +202,8 @@ export const processMessage = async (
     system,
     developer,
     ...formattedPreviousMessages,
-    latestUserMessage,
     customReminderMessage,
+    latestUserMessage,
   ];
 
   logLogs(
@@ -201,9 +216,7 @@ export const processMessage = async (
     const responsesResponse = await openAiResponsesRequest({
       input: messagesForOpenAI,
       requestId,
-      model: imageUrl
-        ? 'gpt-4.1'
-        : 'ft:gpt-4.1-2025-04-14:tylr:4point1-1:BMMQRXVQ',
+      model: 'gpt-5',
       temperature: 1,
       file_search: true,
       web_search: true,

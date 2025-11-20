@@ -201,6 +201,10 @@ export const openAiResponsesRequest = async ({
           format: {
             type: 'text',
           },
+          verbosity: 'low',
+        },
+        reasoning: {
+          effort: 'medium',
         },
         tools: tools.length > 0 ? tools : undefined,
         parallel_tool_calls: true,

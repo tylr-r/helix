@@ -51,9 +51,9 @@ export async function persistDossierUpdate(
       // 2a. Delete old file from vector store (if it exists)
       if (existingMapping?.vectorStoreFileId) {
         try {
-          await openai.vectorStores.files.del(
-            vectorStoreId,
+          await openai.vectorStores.files.delete(
             existingMapping.vectorStoreFileId,
+            { vector_store_id: vectorStoreId },
           );
           logLogs(
             `DOSSIER: Removed old file ${existingMapping.vectorStoreFileId} from vector store`,
@@ -90,7 +90,7 @@ export async function persistDossierUpdate(
     // 3. Delete old OpenAI file (if it exists)
     if (existingMapping?.fileId) {
       try {
-        await openai.files.del(existingMapping.fileId);
+        await openai.files.delete(existingMapping.fileId);
         logLogs(
           `DOSSIER: Deleted old OpenAI file ${existingMapping.fileId}`,
           requestId,
