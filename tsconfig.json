@@ -8,8 +8,10 @@
     "strict": true,
     "target": "es2017",
     "esModuleInterop": true,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "skipLibCheck": true
   },
   "compileOnSave": true,
-  "include": ["src", "index.ts"]
+  "include": ["src", "index.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.spec.ts", "src/**/__tests__", "node_modules"]
 }
