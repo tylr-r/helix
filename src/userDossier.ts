@@ -1,5 +1,5 @@
 import * as functions from 'firebase-functions/v2';
-import { logLogs, logTime } from './utils';
+import { logLogs, logTime, maskIdentifier, summarizeText } from './utils';
 
 // Import services
 import { UserDossierData, getDossierMapping } from './dossierMappingService';
@@ -84,7 +84,7 @@ const createUserDossier = async (
   const start = Date.now();
 
   logLogs(
-    `DOSSIER: Attempting to create dossier for user ${userId}`,
+    `DOSSIER: Attempting to create dossier for user ${maskIdentifier(userId)}`,
     requestId,
   );
 
@@ -92,13 +92,16 @@ const createUserDossier = async (
   const existingMapping = await getDossierMapping(userId, requestId);
   if (existingMapping) {
     logLogs(
-      `DOSSIER: Dossier already exists for user ${userId} (File ID: ${existingMapping.fileId}). No action needed.`,
+      `DOSSIER: Dossier already exists for user ${maskIdentifier(userId)}. No action needed.`,
       requestId,
     );
     return true;
   }
 
-  logLogs(`DOSSIER: Creating new dossier for user ${userId}`, requestId);
+  logLogs(
+    `DOSSIER: Creating new dossier for user ${maskIdentifier(userId)}`,
+    requestId,
+  );
   // Use provided content or generate initial content
   const dossierFileContent =
     content ?? generateInitialDossierContent(userId, name);
@@ -116,7 +119,7 @@ const createUserDossier = async (
     return true;
   } else {
     logLogs(
-      `DOSSIER: Failed to persist new dossier for user ${userId}`,
+      `DOSSIER: Failed to persist new dossier for user ${maskIdentifier(userId)}`,
       requestId,
     );
     return false;
@@ -144,7 +147,10 @@ const updateDossierSection = async (
 ): Promise<boolean> => {
   const start = Date.now();
 
-  logLogs(`DOSSIER: Updating ${section} section for user ${userId}`, requestId);
+  logLogs(
+    `DOSSIER: Updating ${section} section for user ${maskIdentifier(userId)}`,
+    requestId,
+  );
 
   const mapping = await getDossierMapping(userId, requestId);
   if (!mapping) {
@@ -327,10 +333,16 @@ export const ensureUserDossier = async (
 ): Promise<boolean> => {
   const mapping = await getDossierMapping(userId, requestId);
   if (mapping) {
-    logLogs(`DOSSIER: Dossier already exists for user ${userId}`, requestId);
+    logLogs(
+      `DOSSIER: Dossier already exists for user ${maskIdentifier(userId)}`,
+      requestId,
+    );
     return true;
   }
-  logLogs(`DOSSIER: Creating new dossier for user ${userId}`, requestId);
+  logLogs(
+    `DOSSIER: Creating new dossier for user ${maskIdentifier(userId)}`,
+    requestId,
+  );
   return await createUserDossier(userId, requestId, name);
 };
 
@@ -459,7 +471,7 @@ export async function handleDossierFunctionCall(
         );
 
         logLogs(
-          `DOSSIER: Updated relationship: ${functionArgs.name} (${functionArgs.relationship})`,
+          `DOSSIER: Updated relationship entry (${summarizeText(functionArgs.name)} / ${summarizeText(functionArgs.relationship)})`,
           requestId,
         );
         break;
@@ -493,7 +505,7 @@ export async function handleDossierFunctionCall(
         );
 
         logLogs(
-          `DOSSIER: Updated ${section}: ${functionArgs.category} - ${functionArgs.insight}`,
+          `DOSSIER: Updated ${section} entry (${summarizeText(functionArgs.category)} / ${summarizeText(functionArgs.insight)})`,
           requestId,
         );
         break;
@@ -509,7 +521,10 @@ export async function handleDossierFunctionCall(
           'context',
           `- ${contextInsight}`,
         );
-        logLogs(`DOSSIER: Updated context: ${functionArgs.context}`, requestId);
+        logLogs(
+          `DOSSIER: Updated context entry (${summarizeText(functionArgs.context)})`,
+          requestId,
+        );
         break;
       }
 
@@ -546,7 +561,10 @@ export const inspectDossier = async (
       return null;
     }
 
-    logLogs(`DOSSIER: Retrieved full content for user ${userId}`, requestId);
+    logLogs(
+      `DOSSIER: Retrieved full content for user ${maskIdentifier(userId)}`,
+      requestId,
+    );
 
     return content;
   } catch (error) {

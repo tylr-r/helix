@@ -4,11 +4,15 @@
  * Fast unit tests for utility functions
  */
 
+import crypto from 'node:crypto';
 import { describe, expect, test } from 'vitest';
 import {
     filterValidMessages,
     getHumanReadableDate,
-    getTimeSince
+    getTimeSince,
+    isValidMetaSignature,
+    maskIdentifier,
+    summarizeText,
 } from '../utils';
 
 describe('Utility Functions', () => {
@@ -110,5 +114,33 @@ describe('Utility Functions', () => {
     expect(filtered.length).toBe(2); // Only Message 3 and 4
     
     console.log('✓ filterValidMessages handles clear command');
+  });
+
+  test('maskIdentifier redacts most of an identifier', () => {
+    expect(maskIdentifier('1234567890')).toBe('12***90');
+    expect(maskIdentifier('1234')).toBe('***');
+    expect(maskIdentifier(undefined)).toBe('unknown');
+  });
+
+  test('summarizeText reports text length without exposing content', () => {
+    expect(summarizeText('secret')).toBe('length=6');
+    expect(summarizeText('')).toBe('length=0');
+    expect(summarizeText(undefined)).toBe('length=0');
+  });
+
+  test('isValidMetaSignature validates a correct Meta webhook signature', () => {
+    const appSecret = 'top-secret';
+    const rawBody = Buffer.from(JSON.stringify({test: true}));
+    const signature = crypto
+      .createHmac('sha256', appSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    expect(
+      isValidMetaSignature(rawBody, `sha256=${signature}`, appSecret),
+    ).toBe(true);
+    expect(
+      isValidMetaSignature(rawBody, 'sha256=deadbeef', appSecret),
+    ).toBe(false);
   });
 });

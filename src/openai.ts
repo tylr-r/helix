@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions/v2';
 import OpenAI from 'openai';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
-import { logLogs, logTime } from './utils';
+import { logLogs, logTime, summarizeText } from './utils';
 
 // Get environment variables for OpenAI
 const openaitoken = process.env.OPENAI_API_KEY ?? '';
@@ -63,16 +63,18 @@ export const openAiRequest = async (
         .catch((error) => {
           functions.logger.error(`Error sending to OpenAI: ${error}`);
         });
-      functions.logger.info(`Usage: ${JSON.stringify(completion?.usage)}`);
+      functions.logger.info(
+        `OpenAI function call completed (${JSON.stringify(completion?.usage ?? {})})`,
+      );
       const result = completion?.choices[0].message.function_call.arguments;
       await logTime(start, 'openAiRequest', requestId);
       return result;
     } else {
       logLogs('Starting normal openai call', requestId);
       functions.logger.debug(
-        `normal call: ${JSON.stringify({
+        `normal call config: ${JSON.stringify({
           model,
-          messages,
+          message_count: messages.length,
           max_tokens,
           temperature,
         })}`,
@@ -148,10 +150,10 @@ export const openAiResponsesRequest = async ({
         previousResponseId = null;
       }
       functions.logger.debug(
-        `responses call: ${JSON.stringify({
-          instructions,
+        `responses call config: ${JSON.stringify({
+          instruction_length: summarizeText(instructions),
           model,
-          input,
+          input_count: Array.isArray(input) ? input.length : 1,
           max_output_tokens,
           temperature,
           web_search,
@@ -216,7 +218,11 @@ export const openAiResponsesRequest = async ({
       });
 
       functions.logger.info(
-        `Responses API successful with output: ${JSON.stringify(response)}`,
+        `Responses API successful (${JSON.stringify({
+          id: response.id,
+          output_items: response.output?.length ?? 0,
+          output_text_length: response.output_text?.length ?? 0,
+        })})`,
       );
 
       // Log file search results if included

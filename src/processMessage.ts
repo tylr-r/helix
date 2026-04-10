@@ -13,6 +13,8 @@ import {
   getTimeSince,
   logLogs,
   logTime,
+  maskIdentifier,
+  summarizeText,
 } from './utils';
 
 const notionToken = process.env.NOTION_TOKEN;
@@ -79,19 +81,25 @@ export const processMessage = async (
   lastThreadId: string | null,
   requestId: string,
 ): Promise<string> => {
-  logLogs(`Message from ${platform}:  ${msgBody}`, requestId);
-  logLogs('user info: ' + JSON.stringify(name), requestId);
+  logLogs(
+    `Received ${platform} message from ${maskIdentifier(userId)} (${summarizeText(msgBody)})`,
+    requestId,
+  );
+  logLogs(`Loaded user profile (${summarizeText(name)})`, requestId);
 
   if (msgBody.trim() === 'clear') {
-    logLogs(`Clearing history for user ${userId}`, requestId);
+    logLogs(`Clearing history for user ${maskIdentifier(userId)}`, requestId);
     return 'All clear';
   }
 
   // Ensure user has a dossier
   try {
-    logLogs(`DOSSIER: Ensuring dossier for user ${userId}`, requestId);
+    logLogs(`DOSSIER: Ensuring dossier for user ${maskIdentifier(userId)}`, requestId);
     await ensureUserDossier(userId, name, requestId);
-    logLogs(`DOSSIER: Ensured dossier exists for user ${userId}`, requestId);
+    logLogs(
+      `DOSSIER: Ensured dossier exists for user ${maskIdentifier(userId)}`,
+      requestId,
+    );
   } catch (error) {
     functions.logger.warn(
       `DOSSIER: Failed to ensure dossier for user ${userId}: ${error}`,
@@ -110,10 +118,12 @@ export const processMessage = async (
   const isLink: boolean =
     attachment?.[0]?.type === 'fallback' && attachment?.[0]?.payload?.url;
 
-  functions.logger.log(`system message: ${systemMessage}`, requestId);
-  functions.logger.log(`developer message: ${developerMessage}`, requestId);
+  functions.logger.log(
+    `Loaded prompt configuration (${summarizeText(systemMessage)}, ${summarizeText(developerMessage)})`,
+    requestId,
+  );
 
-  let formattedPreviousMessages;
+  let formattedPreviousMessages: Array<{ role: string; content: string }> = [];
   if (platform === 'messenger') {
     try {
       // Previous messages will come in in chronological order with the most recent one at the top, so we need to reverse them to get the correct order where the oldest message is first and the newest message is at the bottom.
@@ -141,14 +151,7 @@ export const processMessage = async (
           content: msg.message,
         }));
         logLogs(
-          `Previous messages (formatted): ${JSON.stringify(
-            formattedPreviousMessages,
-          )}`,
-          requestId,
-        );
-        // Calculate time since last message
-        logLogs(
-          `last message sent: ${JSON.stringify(previousMessagesReversed[1])}`,
+          `Prepared ${formattedPreviousMessages.length} prior messages for context`,
           requestId,
         );
         // Get time since the previous message (before the most recent user message) was sent
@@ -207,7 +210,7 @@ export const processMessage = async (
   ];
 
   logLogs(
-    `Messages for OpenAI: ${JSON.stringify(messagesForOpenAI)}`,
+    `Prepared ${messagesForOpenAI.length} messages for OpenAI`,
     requestId,
   );
 
@@ -230,7 +233,7 @@ export const processMessage = async (
 
     if (!responsesResponse || !hasTextResponse) {
       functions.logger.error(
-        `No text response from OpenAI: ${JSON.stringify(responsesResponse)}`,
+        `No text response from OpenAI for request ${requestId}`,
         requestId,
       );
       logLogs('No text response from OpenAI', requestId);
@@ -238,7 +241,10 @@ export const processMessage = async (
     }
 
     response = responsesResponse.output_text;
-    logLogs(`User-facing response: ${JSON.stringify(response)}`, requestId);
+    logLogs(
+      `Generated user-facing response (${summarizeText(response)})`,
+      requestId,
+    );
 
     // Extract and log file search results if available
     const fileSearchResults = extractFileSearchResults(responsesResponse);
@@ -302,7 +308,7 @@ export const processDossierUpdatesAsync = async (
 ): Promise<void> => {
   try {
     logLogs(
-      `DOSSIER_ASYNC: Starting dossier update generation for user ${userId}`,
+      `DOSSIER_ASYNC: Starting dossier update generation for user ${maskIdentifier(userId)}`,
       requestId,
     );
 
@@ -391,7 +397,7 @@ Focus ONLY on generating relevant function calls. Do NOT provide any conversatio
           requestId,
         );
         logLogs(
-          `DOSSIER_ASYNC: Function call arguments (raw): ${toolCall.arguments}`,
+          `DOSSIER_ASYNC: Function call arguments received (${summarizeText(toolCall.arguments)})`,
           requestId,
         );
 
@@ -405,9 +411,9 @@ Focus ONLY on generating relevant function calls. Do NOT provide any conversatio
           try {
             functionArgs = JSON.parse(toolCall.arguments);
             logLogs(
-              `DOSSIER_ASYNC: Parsed function arguments: ${JSON.stringify(
-                functionArgs,
-              )}`,
+              `DOSSIER_ASYNC: Parsed function arguments with ${
+                Object.keys(functionArgs).length
+              } keys`,
               requestId,
             );
           } catch (parseError) {
