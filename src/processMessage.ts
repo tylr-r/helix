@@ -123,7 +123,7 @@ export const processMessage = async (
     requestId,
   );
 
-  let formattedPreviousMessages: Array<{ role: string; content: string }> = [];
+  let formattedPreviousMessages: any[] = [];
   if (platform === 'messenger') {
     try {
       // Previous messages will come in in chronological order with the most recent one at the top, so we need to reverse them to get the correct order where the oldest message is first and the newest message is at the bottom.
