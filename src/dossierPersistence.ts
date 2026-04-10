@@ -2,7 +2,7 @@ import * as functions from 'firebase-functions';
 import OpenAI from 'openai';
 import { UserDossierData, storeDossierMapping } from './dossierMappingService';
 import { database } from './firebase';
-import { logLogs, summarizeText } from './utils';
+import { logLogs } from './utils';
 
 // OpenAI client configuration
 const openaitoken = process.env.OPENAI_API_KEY ?? '';
@@ -224,7 +224,7 @@ export async function searchVectorStore(
 
   try {
     logLogs(
-      `DOSSIER: Performing vector store search (${summarizeText(query)})`,
+      `DOSSIER: Performing vector store search for query: "${query}"`,
       requestId,
     );
 

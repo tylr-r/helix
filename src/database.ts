@@ -1,7 +1,7 @@
 import * as functions from 'firebase-functions/v2';
 import { PlatformType, getUserName } from './facebook';
 import { database } from './firebase';
-import { getHumanReadableDate, logLogs, logTime, maskIdentifier } from './utils';
+import { getHumanReadableDate, logLogs, logTime } from './utils';
 
 /**
  * Creates a new user or updates an existing user in the database
@@ -43,7 +43,7 @@ export const updateLastThreadId = async (
   logLogs('Storing latest thread id in Database', requestId);
   const lastUpdated = getHumanReadableDate();
   const id = thread;
-  logLogs(`Updating thread for user ${maskIdentifier(userId)}`, requestId);
+  logLogs(`userName: ${userName}`, requestId);
   try {
     database.ref(`users/${userId}/thread`).set({
       id,
@@ -63,10 +63,7 @@ export const getStoredInfo = async (
   requestId: string,
 ): Promise<{ thread: { id: string | null }; userName: string }> => {
   const start = Date.now();
-  logLogs(
-    `Getting stored info for user ${maskIdentifier(userId)} on ${platform}`,
-    requestId,
-  );
+  logLogs(`Getting stored info for user ${userId} on ${platform}`, requestId);
   try {
     const userInfo = (
       await database.ref(`users/${userId}`).once('value')
@@ -76,10 +73,7 @@ export const getStoredInfo = async (
     let threadId: string | null = null;
 
     if (!userInfo) {
-      logLogs(
-        `No user found for ${maskIdentifier(userId)}, creating new user.`,
-        requestId,
-      );
+      logLogs(`No user found for ${userId}, creating new user.`, requestId);
       userName = (await getUserName(userId, platform, requestId)) ?? 'someone';
       await storeNewUser(userId, userName, platform, false, requestId);
       logTime(start, `getStoredInfo (New User) for ${userId}`, requestId);
@@ -92,7 +86,7 @@ export const getStoredInfo = async (
 
     if (!userName) {
       logLogs(
-        `No username found for user ${maskIdentifier(userId)}. Fetching and updating.`,
+        `No username found for user ${userId}. Fetching and updating.`,
         requestId,
       );
       userName = (await getUserName(userId, platform, requestId)) ?? 'someone';
@@ -100,7 +94,7 @@ export const getStoredInfo = async (
     }
 
     if (!threadId) {
-      logLogs(`No thread ID found for user ${maskIdentifier(userId)}.`, requestId);
+      logLogs(`No thread ID found for user ${userId}.`, requestId);
       logTime(start, `getStoredInfo (No Thread) for ${userId}`, requestId);
       return { thread: { id: null }, userName };
     }

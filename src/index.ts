@@ -12,30 +12,23 @@ import {
   clearTimeLogs,
   getLogs,
   getTimeLogs,
-  isValidMetaSignature,
   logLogs,
   logTime,
 } from './utils';
 import { handleWhatsAppWebhook } from './whatsappHandler';
 
 const verifyToken = process.env.VERIFY_TOKEN;
-const metaAppSecret = process.env.META_APP_SECRET ?? process.env.APP_SECRET;
 
 const app = async (req, res) => {
   const startTime = Date.now();
   // Generate a unique requestId for this invocation
   const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
   logLogs('running app function!', requestId);
-  functions.logger.info(
-    JSON.stringify({
-      method: req.method,
-      object: req.body?.object ?? null,
-      entryCount: Array.isArray(req.body?.entry) ? req.body.entry.length : 0,
-    }),
-  );
+  functions.logger.info(JSON.stringify(req.body));
   // Webhook verification
   if (req.method === 'GET') {
     logLogs('Processing GET request', requestId);
+    functions.logger.info('Request body:', JSON.stringify(req.body));
 
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
@@ -51,26 +44,6 @@ const app = async (req, res) => {
     return res.sendStatus(404);
   }
   if (req.method === 'POST') {
-    if (!metaAppSecret) {
-      functions.logger.error('Missing META_APP_SECRET/APP_SECRET');
-      return res.sendStatus(500);
-    }
-
-    const rawSignatureHeader =
-      typeof req.get === 'function'
-        ? req.get('x-hub-signature-256')
-        : req.headers['x-hub-signature-256'];
-    const signatureHeader = Array.isArray(rawSignatureHeader) ?
-      rawSignatureHeader[0] :
-      rawSignatureHeader;
-
-    if (
-      !isValidMetaSignature(req.rawBody, signatureHeader, metaAppSecret)
-    ) {
-      functions.logger.warn('Rejected webhook with invalid Meta signature');
-      return res.sendStatus(403);
-    }
-
     res.sendStatus(200);
     logLogs('Processing POST request', requestId);
     let platform: PlatformType;

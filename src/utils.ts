@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import * as functions from 'firebase-functions';
 
 export const logs: string[] = [];
@@ -47,48 +46,6 @@ export const getTimeLogs = (requestId: string): string[] => {
 
 export const clearTimeLogs = (requestId: string): void => {
   timeLogsMap.delete(requestId);
-};
-
-export const maskIdentifier = (value: string | null | undefined): string => {
-  if (!value) return 'unknown';
-  if (value.length <= 4) return '***';
-  return `${value.slice(0, 2)}***${value.slice(-2)}`;
-};
-
-export const summarizeText = (
-  value: string | null | undefined,
-): string => {
-  if (!value) return 'length=0';
-  return `length=${value.length}`;
-};
-
-export const isValidMetaSignature = (
-  rawBody: Buffer | string | undefined,
-  signatureHeader: string | undefined,
-  appSecret: string | undefined,
-): boolean => {
-  if (!rawBody || !signatureHeader || !appSecret) {
-    return false;
-  }
-
-  const [algorithm, signature] = signatureHeader.split('=');
-  if (algorithm !== 'sha256' || !signature) {
-    return false;
-  }
-
-  const expected = crypto
-    .createHmac('sha256', appSecret)
-    .update(rawBody)
-    .digest('hex');
-
-  if (expected.length !== signature.length) {
-    return false;
-  }
-
-  return crypto.timingSafeEqual(
-    Buffer.from(expected, 'hex'),
-    Buffer.from(signature, 'hex'),
-  );
 };
 
 /**

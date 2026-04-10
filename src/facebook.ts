@@ -1,5 +1,5 @@
 import * as functions from 'firebase-functions/v2';
-import { logLogs, logTime, maskIdentifier } from './utils';
+import { logLogs, logTime } from './utils';
 
 export type PlatformType = 'messenger' | 'instagram' | 'whatsapp';
 
@@ -23,25 +23,13 @@ export const facebookGraphRequest = async (
   method: string,
 ) => {
   try {
-    if (!pageAccessToken) {
-      throw new Error('PAGE_ACCESS_TOKEN is not configured');
-    }
-
-    const normalizedEndpoint = endpoint.replace(/^\//, '');
-    if (!normalizedEndpoint) {
-      throw new Error('Facebook Graph API endpoint is required');
-    }
-
-    const url = new URL(
-      `https://graph.facebook.com/v22.0/${normalizedEndpoint}`,
-    );
+    const url = `https://graph.facebook.com/v22.0/${endpoint}${
+      endpoint.includes('?') ? '' : '?'
+    }access_token=${pageAccessToken}`;
 
     const response = await fetch(url, {
       method,
-      headers: {
-        Authorization: `Bearer ${pageAccessToken}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: method !== 'GET' ? JSON.stringify(data) : undefined,
     });
 
@@ -65,10 +53,7 @@ export const getUserName = async (
   platform: PlatformType,
   requestId: string,
 ): Promise<string> => {
-  logLogs(
-    `Getting user name for ${platform} user ${maskIdentifier(userId)}`,
-    requestId,
-  );
+  logLogs(`Getting user name for ${platform} userId: ${userId}`, requestId);
   const start = Date.now();
   const isMessenger = platform === 'messenger';
   const endpoint = isMessenger
@@ -111,7 +96,7 @@ export const getPreviousMessages = async (
   );
 
   const messageThread = response?.data[0].messages.data as MessageThread;
-  logLogs(`Retrieved ${messageThread?.length ?? 0} previous messages`, requestId);
+  logLogs(`Previous messages: ${JSON.stringify(messageThread)}`, requestId);
   logTime(start, 'getPreviousMessages', requestId);
   return messageThread;
 };
@@ -122,10 +107,7 @@ export const sendWhatsAppReceipt = async (
   msgId: string,
   requestId: string,
 ) => {
-  logLogs(
-    `Sending WhatsApp read receipt for message ${maskIdentifier(msgId)}`,
-    requestId,
-  );
+  logLogs(`Sending WhatsApp read receipt for message: ${msgId}`, requestId);
   const start = Date.now();
   await facebookGraphRequest(
     `${phone_number_id}/messages?`,
@@ -147,7 +129,7 @@ export const sendMessengerReceipt = async (
   requestId: string,
 ) => {
   logLogs(
-    `Sending Messenger receipt to ${maskIdentifier(userId)} with action: ${sender_action}`,
+    `Sending Messenger receipt to ${userId} with action: ${sender_action}`,
     requestId,
   );
   const start = Date.now();
@@ -170,10 +152,7 @@ export const sendMessengerMessage = async (
   platform: string,
   requestId: string,
 ) => {
-  logLogs(
-    `Sending ${platform} message to ${maskIdentifier(userId)}`,
-    requestId,
-  );
+  logLogs(`Sending ${platform} message to ${userId}`, requestId);
   const start = Date.now();
   await facebookGraphRequest(
     'me/messages?',

@@ -113,11 +113,6 @@ Messaging app → Firebase Function → OpenAI API → User Response
 npm run deploy
 ```
 
-Required secrets:
-- `VERIFY_TOKEN` for Meta webhook setup
-- `META_APP_SECRET` (or `APP_SECRET`) for webhook signature verification
-- `PAGE_ACCESS_TOKEN`, `OPENAI_API_KEY`, and Notion/Firebase credentials used by the function
-
 ### Monitoring & Logs
 
 * **Real-time logs**: `firebase functions:log`
