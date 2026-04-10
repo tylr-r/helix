@@ -27,8 +27,13 @@ export const facebookGraphRequest = async (
       throw new Error('PAGE_ACCESS_TOKEN is not configured');
     }
 
+    const normalizedEndpoint = endpoint.replace(/^\//, '');
+    if (!normalizedEndpoint) {
+      throw new Error('Facebook Graph API endpoint is required');
+    }
+
     const url = new URL(
-      `https://graph.facebook.com/v22.0/${endpoint.replace(/^\//, '')}`,
+      `https://graph.facebook.com/v22.0/${normalizedEndpoint}`,
     );
 
     const response = await fetch(url, {
