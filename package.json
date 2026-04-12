@@ -42,5 +42,8 @@
     "typescript": "^4.9.0",
     "vitest": "^4.1.4"
   },
-  "private": true
+  "private": true,
+  "overrides": {
+    "@tootallnate/once": "3.0.1"
+  }
 }
