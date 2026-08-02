@@ -18,7 +18,7 @@ export default defineConfig({
         'lib/',
         '**/*.test.ts',
         '**/*.spec.ts',
-        'vitest.config.ts',
+        'vitest.config.mts',
         'vitest.setup.ts',
       ],
     },

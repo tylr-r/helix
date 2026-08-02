@@ -3,9 +3,6 @@ import OpenAI from 'openai';
 import { ResponseInput, Tool } from 'openai/resources/responses/responses';
 import { logLogs, logTime } from './utils';
 
-// Get environment variables for OpenAI
-const openaitoken = process.env.OPENAI_API_KEY ?? '';
-const openAiOrgId = process.env.OPENAI_ORG_ID;
 const vectorStoreId = process.env.VECTOR_STORE_ID ?? '';
 
 // Helper function to get vector store ID if configured
@@ -26,13 +23,11 @@ export const extractFileSearchResults = (response: any): string[] => {
   return results;
 };
 
-// Configure OpenAI client
-const configuration = {
-  organization: openAiOrgId,
-  apiKey: openaitoken,
-};
-
-const openai = new OpenAI(configuration);
+const createOpenAiClient = (): OpenAI =>
+  new OpenAI({
+    organization: process.env.OPENAI_ORG_ID,
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
 export const openAiRequest = async (
   messages: any[],
@@ -46,6 +41,7 @@ export const openAiRequest = async (
   const start = Date.now();
   let completion;
   try {
+    const openai = createOpenAiClient();
     if (function_call && ai_functions !== undefined) {
       logLogs('Starting openai function call', requestId);
       const name = ai_functions[0].name;
@@ -138,6 +134,7 @@ export const openAiResponsesRequest = async ({
 
   while (attempts < retry_attempts) {
     try {
+      const openai = createOpenAiClient();
       logLogs(
         `Starting openai responses API call (attempt ${
           attempts + 1

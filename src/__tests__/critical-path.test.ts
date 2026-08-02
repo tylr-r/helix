@@ -59,7 +59,7 @@ describe('CRITICAL: Core Logic (No API Required)', () => {
         web_search: false,
         retry_attempts: 1,
       });
-    } catch (error) {
+    } catch {
       threwError = true;
     }
     
@@ -201,7 +201,7 @@ describe('CRITICAL: Safety Net (Always Run)', () => {
         web_search: false,
         retry_attempts: 1,
       });
-    } catch (error) {
+    } catch {
       threwError = true;
     }
 
@@ -225,7 +225,7 @@ describe('CRITICAL: Safety Net (Always Run)', () => {
         file_search: false,
         web_search: false,
       });
-    } catch (error) {
+    } catch {
       threwError = true;
     }
 

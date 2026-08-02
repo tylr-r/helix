@@ -1,11 +1,12 @@
-import admin from 'firebase-admin';
+import { App, getApp, initializeApp } from 'firebase-admin/app';
+import { getDatabase } from 'firebase-admin/database';
 
-let firebaseApp: admin.app.App;
+let firebaseApp: App;
 try {
-  firebaseApp = admin.app();
-} catch (error) {
-  firebaseApp = admin.initializeApp();
+  firebaseApp = getApp();
+} catch {
+  firebaseApp = initializeApp();
 }
 
 export const app = firebaseApp;
-export const database = admin.database();
+export const database = getDatabase(firebaseApp);

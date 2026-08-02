@@ -4,15 +4,13 @@ import { UserDossierData, storeDossierMapping } from './dossierMappingService';
 import { database } from './firebase';
 import { logLogs } from './utils';
 
-// OpenAI client configuration
-const openaitoken = process.env.OPENAI_API_KEY ?? '';
-const openAiOrgId = process.env.OPENAI_ORG_ID;
 const vectorStoreId = process.env.VECTOR_STORE_ID ?? '';
 
-const openai = new OpenAI({
-  organization: openAiOrgId,
-  apiKey: openaitoken,
-});
+const createOpenAiClient = (): OpenAI =>
+  new OpenAI({
+    organization: process.env.OPENAI_ORG_ID,
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
 /**
  * Result type for dossier persistence operations
@@ -32,6 +30,7 @@ export async function persistDossierUpdate(
   requestId: string,
 ): Promise<DossierPersistenceResult | null> {
   try {
+    const openai = createOpenAiClient();
     // 1. Create the new OpenAI file
     const newOpenAiFile = await openai.files.create({
       file: new File([newContent], `dossier-${userId}-${Date.now()}.md`, {
@@ -223,6 +222,7 @@ export async function searchVectorStore(
   }
 
   try {
+    const openai = createOpenAiClient();
     logLogs(
       `DOSSIER: Performing vector store search for query: "${query}"`,
       requestId,
